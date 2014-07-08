@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import os.path
+import mr
+root_path = os.path.abspath(os.path.join(os.path.dirname(mr.__file__), '..'))
+
+import os
+os.chdir(root_path)
+
+import subprocess
+
+cmd = ['gunicorn', '-c', 'mr/resources/data/gunicorn_conf_dev.py', 'mr.app.main:app']
+env = { 'DEBUG': '1' }
+
+p = subprocess.Popen(cmd, env=env)
+r = p.wait()
+if r != 0:
+    raise EnvironmentError("Gunicorn launch failed.")
