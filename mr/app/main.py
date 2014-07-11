@@ -8,9 +8,11 @@ dev_path = os.path.abspath(
 
 sys.path.insert(0, dev_path)
 
+import logging
 import flask
 
 import mr.config
+import mr.config.log
 import mr.views.job
 import mr.views.index
 

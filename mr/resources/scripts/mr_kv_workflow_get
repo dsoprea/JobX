@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.workflow
+
+description = "Get a workflow entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('name', help='Name')
+
+args = parser.parse_args()
+
+w = mr.models.kv.workflow.WorkflowKv()
+e = w.get_workflow_by_name(args.name)
+
+pprint.pprint(e)

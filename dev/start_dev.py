@@ -7,6 +7,9 @@ sys.path.insert(0, dev_path)
 
 os.environ['DEBUG'] = '1'
 
+import logging
+
+import mr.config.log
 import mr.app.main
 
 mr.app.main.app.run()
