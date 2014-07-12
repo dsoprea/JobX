@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+import select
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.step
+
+description = "Create a step entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('name', help='Name')
+parser.add_argument('description', help='Description')
+parser.add_argument('code_type', help='Code language')
+parser.add_argument('-a', '--argument', required=True, action='append', help='Initial step name')
+
+args = parser.parse_args()
+
+stdin_waiting = select.select([sys.stdin], [], [], 0)[0]
+if not stdin_waiting:
+    print("Please provide code via STDIN.")
+    sys.exit(1)
+
+code_body = sys.stdin.read().strip()
+
+w = mr.models.kv.workflow.WorkflowKv()
+workflow = w.get_workflow_by_name(args.workflow_name)
+
+s = mr.models.kv.step.StepKv()
+r = s.create_step(
+        workflow, 
+        args.name, 
+        args.description, 
+        args.argument, 
+        (args.code_type, code_body))

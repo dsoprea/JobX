@@ -18,13 +18,16 @@ class RequestKv(mr.models.kv.model.KvModel):
                 mr.entities.kv.job.JOB_CLS)
 
         data = {
-            'workflow_name': workflow.name,
-            'job_name': job.name,
+            'workflow_name': workflow.workflow_name,
+            'job_name': job.job_name,
             'arguments': arguments,
         }
 
-        return self.create_entity(data=data)
+        identity = (workflow.workflow_name, self.make_opaque())
+        return self.create_entity(identity, data)
 
-    def get_request(self, id_):
-        data = self.get_by_identity(id_)
-        return mr.entities.kv.request.REQUEST_CLS(**data)
+    def get_by_workflow_and_id(self, workflow, request_id):
+        data = self.get_by_identity((workflow.name, request_id))
+        return mr.entities.kv.request.REQUEST_CLS(
+                request_id=request_id, 
+                **data)

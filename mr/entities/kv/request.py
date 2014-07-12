@@ -2,6 +2,7 @@ import collections
 
 REQUEST_CLS = collections.namedtuple(
                 'Request', 
-                ('workflow_name',
+                ('request_id',
+                 'workflow_name',
                  'job_name', 
                  'arguments'))

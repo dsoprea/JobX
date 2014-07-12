@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.job
+import mr.models.kv.workflow
+
+description = "Get a job entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('job_name', help='Job name')
+
+args = parser.parse_args()
+
+w = mr.models.kv.workflow.WorkflowKv()
+workflow = w.get_by_name(args.workflow_name)
+
+j = mr.models.kv.job.JobKv()
+r = j.get_by_workflow_and_name(workflow, args.job_name)
+
+pprint.pprint(r)
