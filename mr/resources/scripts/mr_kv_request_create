@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2.7
 
 import sys
 import os.path
@@ -11,13 +11,17 @@ import pprint
 import mr.config.log
 import mr.models.kv.workflow
 import mr.models.kv.job
+import mr.models.kv.request
 
-description = "Create a invoked-workflow entity"
+description = "Create a request entity"
 
 parser = argparse.ArgumentParser(description=description)
 
 parser.add_argument('workflow_name', help='Workflow name')
 parser.add_argument('job_name', help='Job name')
+
+parser.add_argument('-a', '--argument', 
+                    required=True, action='append', nargs=2, help='Argument')
 
 parser.add_argument('-c', '--context', help='Context information')
 
@@ -29,7 +33,7 @@ workflow = w.get_by_name(args.workflow_name)
 j = mr.models.kv.job.JobKv()
 job = j.get_by_workflow_and_name(workflow, args.job_name)
 
-iw = mr.models.kv.workflow.InvokedWorkflowKv()
-r = iw.create_invoked_workflow(workflow, job, args.context)
+r = mr.models.kv.request.RequestKv()
+result = r.create_request(workflow, job, dict(args.argument), args.context)
 
-pprint.pprint(r)
+pprint.pprint(result)

@@ -7,6 +7,9 @@ import mr.entities.kv.step
 class JobKv(mr.models.kv.model.KvModel):
     entity_class = mr.constants.ID_JOB
 
+    def __build_from_data(self, job_name, data):
+        return mr.entities.kv.job.JOB_CLS(job_name=job_name, **data)
+
     def create_job(self, workflow, job_name, description, initial_step):
         assert issubclass(
                 initial_step.__class__, 
@@ -19,8 +22,10 @@ class JobKv(mr.models.kv.model.KvModel):
         }
 
         identity = (workflow.workflow_name, job_name)
-        return self.create_entity(identity, data)
+        self.create_entity(identity, data)
+
+        return self.__build_from_data(job_name, data)
 
     def get_by_workflow_and_name(self, workflow, job_name):
         data = self.get_by_identity((workflow.workflow_name, job_name))
-        return mr.entities.kv.job.JOB_CLS(job_name=job_name, **data)
+        return self.__build_from_data(job_name, data)

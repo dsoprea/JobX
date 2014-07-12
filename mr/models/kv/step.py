@@ -1,4 +1,5 @@
 import hashlib
+import sys
 
 import mr.constants
 import mr.models.kv.model
@@ -9,7 +10,7 @@ import mr.entities.kv.workflow
 class StepKv(mr.models.kv.model.KvModel):
     entity_class = mr.constants.ID_STEP
 
-    def create_step(self, workflow, step_name, description, argument_keys, 
+    def create_step(self, workflow, step_name, description, argument_spec, 
                     dynamic_code):
         assert issubclass(
                 workflow.__class__,
@@ -20,12 +21,15 @@ class StepKv(mr.models.kv.model.KvModel):
         assert code_type in mr.constants.CODE_TYPES
         assert code_body
 
+        for name, type_name in argument_spec.items():
+            getattr(sys.modules['builtins'], type_name)
+
         code_hash = hashlib.sha1(code_body.encode('ASCII')).hexdigest()
 
         data = {
             'workflow_name': workflow.workflow_name,
             'description': description,
-            'argument_keys': argument_keys,
+            'argument_spec': argument_spec,
             'code_hash': code_hash,
             'code_type': code_type,
             'code_body': code_body,

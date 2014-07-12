@@ -3,7 +3,7 @@ import json
 import random
 import hashlib
 
-import etcd
+import etcd.client
 import etcd.exceptions
 
 import mr.config.etcd
@@ -21,7 +21,7 @@ class KvModel(object):
     entity_class = None
 
     def __init__(self):
-        self.__etcd = etcd.Client(**mr.config.etcd.CLIENT_CONFIG)
+        self.__etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
     def create_entity(self, identity, data={}):
         identity = self.__flatten_identity(identity)

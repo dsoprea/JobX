@@ -5,4 +5,5 @@ REQUEST_CLS = collections.namedtuple(
                 ('request_id',
                  'workflow_name',
                  'job_name', 
-                 'arguments'))
+                 'arguments',
+                 'context'))

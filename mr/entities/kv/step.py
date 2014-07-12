@@ -5,7 +5,7 @@ STEP_CLS = collections.namedtuple(
             ('workflow_name',
              'step_name',
              'description',
-             'argument_keys',
+             'argument_spec',
              'code_hash',
              'code_type',
              'code_body'))

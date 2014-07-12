@@ -8,7 +8,12 @@ import mr.entities.kv.workflow
 class RequestKv(mr.models.kv.model.KvModel):
     entity_class = mr.constants.ID_REQUEST
 
-    def create_request(self, workflow, job, arguments):
+    def __build_from_data(self, request_id, data):
+        return mr.entities.kv.request.REQUEST_CLS(
+                request_id=request_id, 
+                **data)
+
+    def create_request(self, workflow, job, arguments, context=None):
         assert issubclass(
                 workflow.__class__,
                 mr.entities.kv.workflow.WORKFLOW_CLS)
@@ -21,13 +26,14 @@ class RequestKv(mr.models.kv.model.KvModel):
             'workflow_name': workflow.workflow_name,
             'job_name': job.job_name,
             'arguments': arguments,
+            'context': context,
         }
 
-        identity = (workflow.workflow_name, self.make_opaque())
-        return self.create_entity(identity, data)
+        request_id = self.make_opaque()
+        identity = (workflow.workflow_name, request_id)
+        self.create_entity(identity, data)
+        return self.__build_from_data(request_id, data)
 
     def get_by_workflow_and_id(self, workflow, request_id):
-        data = self.get_by_identity((workflow.name, request_id))
-        return mr.entities.kv.request.REQUEST_CLS(
-                request_id=request_id, 
-                **data)
+        data = self.get_by_identity((workflow.workflow_name, request_id))
+        return self.__build_from_data(request_id, data)
