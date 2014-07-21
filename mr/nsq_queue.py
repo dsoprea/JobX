@@ -35,6 +35,9 @@ class _NsqProducerConsumer(
                     max_in_flight, 
                     message_handler_cls=message_handler_cls)
 
+    def is_alive(self):
+        return self.__c.is_alive
+
     def start(self):
         self.__c.start()
 
