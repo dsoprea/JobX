@@ -51,6 +51,15 @@ class KvModel(object):
 
         return self.get_encoded(parent, identity)
 
+    def get_children_identity(self, partial_identity):
+        parent = (_ENTITY_ROOT, self.__class__.entity_class)
+
+        _logger.debug("Getting children entities of type [%s] with parent "
+                      "[%s]: [%s]", 
+                      self.__class__.entity_class, parent, partial_identity)
+
+        return self.get_children_encoded(parent, partial_identity)
+
     def make_opaque(self):
         """Generate a unique ID string for the given type of identity."""
 
@@ -101,7 +110,6 @@ class KvModel(object):
                 self.__key_from_identity(parent, identity), 
                 _encode(value))
 
-
     def create_only(self, parent, identity, value):
         return self.__etcd.node.create_only(
                 self.__key_from_identity(parent, identity), 
@@ -124,10 +132,24 @@ class KvModel(object):
         response = self.__etcd.node.get(key)
         return response.node.value
 
+    def get_children(self, parent, identity):
+        key = self.__key_from_identity(parent, identity)
+        response = self.__etcd.node.get(key, recursive=True)
+        for child in response.node.children:
+            yield child.value
+
     def get_encoded(self, parent, identity):
         key = self.__key_from_identity(parent, identity)
         response = self.__etcd.node.get(key)
         return _decode(response.node.value)
+
+    def get_children_encoded(self, parent, identity):
+        key = self.__key_from_identity(parent, identity)
+        response = self.__etcd.node.get(key, recursive=True)
+        for child in response.node.children:
+            # Don't just decode the data, but derive the identity for this 
+            # child as well (subtract the search-key from the child-key).
+            yield (child.key[len(key) + 1:], _decode(child.value))
 
     @property
     def client(self):

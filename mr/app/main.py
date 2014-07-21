@@ -15,9 +15,13 @@ import mr.config
 import mr.config.log
 import mr.views.job
 import mr.views.index
+import mr.queue
 
 app = flask.Flask(__name__)
 app.debug = mr.config.IS_DEBUG
 
 app.register_blueprint(mr.views.index.index_bp)
 app.register_blueprint(mr.views.job.job_bp)
+
+def _boot_mr():
+    mr.queue.boot()

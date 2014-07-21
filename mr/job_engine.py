@@ -4,6 +4,10 @@ import functools
 
 import gevent.pool
 
+import nsq.consumer
+
+import mr.models.kv.step
+
 #import mr.handlers
 #import mr.steps
 #import mr.invoked_step
@@ -13,24 +17,31 @@ _logger = logging.getLogger(__name__)
 
 
 class JobEngine(object):
-    def __init__(self, request, workflow, job, step):
-        self.__request = request
+    def __init__(self, workflow):
         self.__workflow = workflow
-        self.__job = job
-        self.__step = step
 
-    def run(self, arguments):
+        s = mr.models.kv.step.StepKv()
+        self.__step_library = s.get_library_for_workflow(workflow)
+
+    def run(self):
+        """Process a queued job."""
+
+# TODO(dustin): Start the NSQ client as a consumer.
+
+        raise NotImplementedError()
+
+    def queue(self, request, job, arguments):
+
         distilled_arguments = {}
         for k, v in arguments.items():
             cls = getattr(
                     sys.modules['__builtin__'], 
-                    self.__step.argument_spec[k])
+                    step.argument_spec[k])
 
             distilled_arguments[k] = cls(v)
 
-        _logger.debug("Arguments: %s", distilled_arguments)
-
-# TODO(dustin): Finish.
+# TODO(dustin): Finish pushing into queue. Make sure this request has a "state" 
+#               entry that we can block on.
 
         return { 'result': 123 }
 

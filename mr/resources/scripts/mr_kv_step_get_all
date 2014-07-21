@@ -12,12 +12,11 @@ import mr.config.log
 import mr.models.kv.workflow
 import mr.models.kv.step
 
-description = "Get a step entity"
+description = "Get all steps entities for a workflow"
 
 parser = argparse.ArgumentParser(description=description)
 
 parser.add_argument('workflow_name', help='Workflow name')
-parser.add_argument('step_name', help='Step name')
 
 args = parser.parse_args()
 
@@ -25,6 +24,7 @@ w = mr.models.kv.workflow.WorkflowKv()
 workflow = w.get_by_name(args.workflow_name)
 
 s = mr.models.kv.step.StepKv()
-step = s.get_by_workflow_and_name(workflow, args.step_name)
+steps = s.get_all_by_workflow(workflow)
 
-pprint.pprint(step)
+for step in steps:
+    pprint.pprint(step)
