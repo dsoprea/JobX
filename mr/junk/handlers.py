@@ -25,7 +25,7 @@ class Handlers(object):
 
             c = compile(code, name, 'exec')
             locals_ = {}
-            exec(c, globals, locals_)
+            exec(c, globals, locals_) b,u,mim
 
             return locals_[id_]
 
@@ -43,8 +43,7 @@ return xrange(arg1)
 
         def add_handler(name, code_lines):
             handlers[name] = self.__compile(code_lines)
-
-        self.__state = (1, datetime.datetime.now(), handlers)
+?        self.__state = (1, datetime.datetime.now(), handlers)
 
     @property
     def list_version(self):

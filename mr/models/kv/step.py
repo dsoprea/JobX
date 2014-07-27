@@ -3,8 +3,8 @@ import sys
 
 import mr.constants
 import mr.models.kv.model
-import mr.entities.kv.step
-import mr.entities.kv.workflow
+import mr.models.kv.workflow
+
 
 class _StepLibrary(object):
     def __init__(self, step_kv, workflow):
@@ -26,25 +26,34 @@ class _StepLibrary(object):
         children_gen = self.get_children_identity(
                         self.__workflow.workflow_name)
         for node_name, data in children_gen:
-            s = mr.entities.kv.step.STEP_CLS(step_name=node_name, **data)
+            s = mr.models.kv.step.Step(step_name=node_name, **data)
             yield (node_name, s)
 
     def get_step(self, step_name):
         return self.__steps[step_name]
 
 
-class StepKv(mr.models.kv.model.KvModel):
+class Step(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_STEP
 
+    workflow_name = mr.models.kv.model.Field()
+    step_name = mr.models.kv.model.Field()
+    description = mr.models.kv.model.Field()
+    argument_spec = mr.models.kv.model.Field()
+    code_hash = mr.models.kv.model.Field()
+    code_type = mr.models.kv.model.Field()
+    code_body = mr.models.kv.model.Field()
+
     def __init__(self, *args, **kwargs):
-        super(StepKv, self).__init__(self, *args, **kwargs)
+        super(Step, self).__init__(self, *args, **kwargs)
         self.__library = None
 
-    def create_step(self, workflow, step_name, description, argument_spec, 
-                    dynamic_code):
+    @classmethod
+    def create(cls, workflow, step_name, description, argument_spec, 
+               dynamic_code):
         assert issubclass(
                 workflow.__class__,
-                mr.entities.kv.workflow.WORKFLOW_CLS)
+                mr.models.kv.workflow.Workflow)
 
         (code_type, code_body) = dynamic_code
 
@@ -65,12 +74,18 @@ class StepKv(mr.models.kv.model.KvModel):
             'code_body': code_body,
         }
 
-        return self.create_entity((workflow.workflow_name, step_name), data)
+        return cls.create_entity((workflow.workflow_name, step_name), data)
 
-    def get_by_workflow_and_name(self, workflow, step_name):
-        data = self.get_by_identity((workflow.workflow_name, step_name))
-        return mr.entities.kv.step.STEP_CLS(step_name=step_name, **data)
+    @classmethod
+    def get_by_workflow_and_name(cls, workflow, step_name):
+        data = cls.get_by_identity((workflow.workflow_name, step_name))
 
+        print(data)
+
+        return Step(step_name=step_name, **data)
+
+# TODO(dustin): Determine whether this should be an object method or class 
+#               method.
     def get_library_for_workflow(self, workflow):
         if self.__library is None:
             self.__library = _StepLibrary(self, workflow)

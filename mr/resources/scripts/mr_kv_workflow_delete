@@ -6,20 +6,16 @@ dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '
 sys.path.insert(0, dev_path)
 
 import argparse
-import pprint
 
 import mr.config.log
 import mr.models.kv.workflow
 
-description = "Create a workflow entity"
+description = "Delete a workflow entity"
 
 parser = argparse.ArgumentParser(description=description)
 
 parser.add_argument('name', help='Name')
-parser.add_argument('description', help='Description')
 
 args = parser.parse_args()
 
-w = mr.models.kv.workflow.Workflow.create(args.name, args.description)
-
-pprint.pprint(w)
+mr.models.kv.workflow.Workflow.delete_by_name(args.name)

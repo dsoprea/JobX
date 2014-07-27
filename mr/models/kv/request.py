@@ -1,26 +1,31 @@
 import mr.constants
 import mr.models.kv.model
-import mr.entities.kv.request
-import mr.entities.kv.job
-import mr.entities.kv.workflow
+import mr.models.kv.job
+import mr.models.kv.workflow
 
 
-class RequestKv(mr.models.kv.model.KvModel):
+class Request(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_REQUEST
 
-    def __build_from_data(self, request_id, data):
-        return mr.entities.kv.request.REQUEST_CLS(
-                request_id=request_id, 
-                **data)
+    request_id = mr.models.kv.model.Field()
+    workflow_name = mr.models.kv.model.Field()
+    job_name = mr.models.kv.model.Field()
+    arguments = mr.models.kv.model.Field()
+    context = mr.models.kv.model.Field()
 
-    def create_request(self, workflow, job, arguments, context=None):
+    @classmethod
+    def __build_from_data(cls, request_id, data):
+        return Request(request_id=request_id, **data)
+
+    @classmethod
+    def create(cls, workflow, job, arguments, context=None):
         assert issubclass(
                 workflow.__class__,
-                mr.entities.kv.workflow.WORKFLOW_CLS)
+                mr.models.kv.workflow.Workflow)
 
         assert issubclass(
                 job.__class__,
-                mr.entities.kv.job.JOB_CLS)
+                mr.models.kv.job.Job)
 
         data = {
             'workflow_name': workflow.workflow_name,
@@ -29,11 +34,12 @@ class RequestKv(mr.models.kv.model.KvModel):
             'context': context,
         }
 
-        request_id = self.make_opaque()
+        request_id = cls.make_opaque()
         identity = (workflow.workflow_name, request_id)
-        self.create_entity(identity, data)
-        return self.__build_from_data(request_id, data)
+        cls.create_entity(identity, data)
+        return cls.__build_from_data(request_id, data)
 
-    def get_by_workflow_and_id(self, workflow, request_id):
-        data = self.get_by_identity((workflow.workflow_name, request_id))
-        return self.__build_from_data(request_id, data)
+    @classmethod
+    def get_by_workflow_and_id(cls, workflow, request_id):
+        data = cls.get_by_identity((workflow.workflow_name, request_id))
+        return cls.__build_from_data(request_id, data)

@@ -6,3 +6,4 @@
 /build/
 /dist/
 /mapreduce.egg-info/
+/dev/etcd/

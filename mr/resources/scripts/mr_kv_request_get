@@ -22,10 +22,7 @@ parser.add_argument('request_id', help='Request ID')
 
 args = parser.parse_args()
 
-w = mr.models.kv.workflow.WorkflowKv()
-workflow = w.get_by_name(args.workflow_name)
-
-r = mr.models.kv.request.RequestKv()
-result = r.get_by_workflow_and_id(workflow, args.request_id)
+workflow = mr.models.kv.workflow.Workflow.get_by_name(args.workflow_name)
+result = mr.models.kv.request.Request.get_by_workflow_and_id(workflow, args.request_id)
 
 pprint.pprint(result)

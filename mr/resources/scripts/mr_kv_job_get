@@ -21,10 +21,7 @@ parser.add_argument('job_name', help='Job name')
 
 args = parser.parse_args()
 
-w = mr.models.kv.workflow.WorkflowKv()
-workflow = w.get_by_name(args.workflow_name)
-
-j = mr.models.kv.job.JobKv()
-r = j.get_by_workflow_and_name(workflow, args.job_name)
+workflow = mr.models.kv.workflow.Workflow.get_by_name(args.workflow_name)
+r = mr.models.kv.job.Job.get_by_workflow_and_name(workflow, args.job_name)
 
 pprint.pprint(r)

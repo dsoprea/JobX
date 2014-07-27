@@ -37,13 +37,13 @@ if not stdin_waiting:
 
 code_body = sys.stdin.read().strip()
 
-w = mr.models.kv.workflow.WorkflowKv()
-workflow = w.get_by_name(args.workflow_name)
+workflow = mr.models.kv.workflow.Workflow.get_by_name(args.workflow_name)
 
-s = mr.models.kv.step.StepKv()
-r = s.create_step(
+r = mr.models.kv.step.Step.create(
         workflow, 
         args.name, 
         args.description, 
         dict(args.argument), 
         (args.code_type, code_body))
+
+pprint.pprint(r)
