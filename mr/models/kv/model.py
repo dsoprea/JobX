@@ -123,10 +123,6 @@ class Model(object):
         cls.__delete_entity(identity)
         self.__is_stored = False
 
-    def list(self):
-        cls = self.__class__
-        return cls.__list_entities()
-
     def get_identity(self):
         raise NotImplementedError()
 
@@ -246,17 +242,17 @@ class Model(object):
 #                cls.__key_from_identity(parent, name))
 
     @classmethod
-    def __list_entities(cls):
+    def list_entities(cls, identity_prefix):
         parent = (_ENTITY_ROOT, cls.entity_class)
 
-        _logger.debug("Getting children [%s] entities with parent [%s].", 
+        _logger.debug("Getting children [%s] entities of parent [%s].", 
                       cls.entity_class, parent)
 
-        return cls.__list_encoded(parent, ())
+        return cls.__list_encoded(parent, identity_prefix)
 
     @classmethod
-    def __list_encoded(parent, identity):
-        key = cls.__key_from_identity(parent, identity)
+    def __list_encoded(cls, parent, identity_prefix):
+        key = cls.__key_from_identity(parent, identity_prefix)
 
 # TODO(dustin): We still need to confirm that we can get children without being 
 #               recursive. Update the documentation, either way.

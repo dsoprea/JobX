@@ -10,7 +10,7 @@ import pprint
 
 import mr.config.log
 import mr.models.kv.workflow
-import mr.models.kv.step
+import mr.models.kv.handler
 
 description = "Get all steps entities for a workflow"
 
@@ -20,11 +20,9 @@ parser.add_argument('workflow_name', help='Workflow name')
 
 args = parser.parse_args()
 
-w = mr.models.kv.workflow.WorkflowKv()
-workflow = w.get_by_name(args.workflow_name)
+workflow = mr.models.kv.workflow.get(args.workflow_name)
 
-s = mr.models.kv.step.StepKv()
-steps = s.get_all_by_workflow(workflow)
+handlers = mr.models.kv.handler.Handler.list(workflow)
 
-for step in steps:
-    pprint.pprint(step)
+for handler in handlers:
+    pprint.pprint(handler)
