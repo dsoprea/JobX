@@ -20,12 +20,18 @@ class Handler(mr.models.kv.model.Model):
 
     def __init__(self, workflow=None, *args, **kwargs):
         super(Handler, self).__init__(self, *args, **kwargs)
+        self.update_version()
 
-        self.version = hashlib.sha1(self.source_code).hexdigest()
         self.__workflow = workflow
 
     def get_identity(self):
         return (self.__workflow.name, self.name)
+
+    def update_version(self):
+        self.version = hashlib.sha1(self.source_code).hexdigest()
+
+    def presave(self):
+        self.update_version()
 
     def set_workflow(self, workflow):
         self.__workflow = workflow

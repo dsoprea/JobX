@@ -15,7 +15,12 @@ _logger = logging.getLogger(__name__)
 
 HANDLER_DEFINITION_CLS = collections.namedtuple(
                             'HandlerDefinition', 
-                            ['name', 'version', 'description', 'source_code'])
+                            ['name', 
+                             'version', 
+                             'description', 
+                             'source_code',
+                             'argument_spec',
+                             'source_type'])
 
 
 class SourceAdapter(object):
@@ -28,8 +33,8 @@ class SourceAdapter(object):
 
         raise NotImplementedError()
 
-    def get_handler_source(self, name):
-        """Get the sourcecode and version string for the given handler."""
+    def get_handler(self, name):
+        """Get the given definition."""
 
         raise NotImplementedError()
 
@@ -68,7 +73,7 @@ class FilesystemSourceAdapter(SourceAdapter):
     def list_handlers(self):
         return self.__enumerate_handlers()
 
-    def get_handler_source(self, name):
+    def get_handler(self, name):
         replacements = {
             'name': name
         }
@@ -79,7 +84,16 @@ class FilesystemSourceAdapter(SourceAdapter):
         filepath = os.path.join(deploy_ui.config.handler.SOURCE_PATH, filename)
 
         with open(filepath) as f:
-            return f.read()
+            source_code = f.read()
+
+# TODO(dustin): Finish filling-out these fields.
+        return HANDLER_DEFINITION_CLS(
+                name=name, 
+                version=None, 
+                description=None, 
+                source_code=None, 
+                argument_spec=None, 
+                source_type=None)
 
     def get_handlers_state(self):
         states = [version for (name, version) in self.__enumerate_handlers()]
@@ -102,7 +116,7 @@ class LibraryAdapter(object):
 
         raise NotImplementedError()
 
-    def add_handler(self, handler_definition):
+    def create_handler(self, handler_definition):
         """Store the given new handler."""
 
         raise NotImplementedError()
@@ -126,43 +140,47 @@ class KvLibraryAdapter(LibraryAdapter):
 
     def list_handlers(self):
         """Enumerate the handlers as (name, version)."""
-# TODO(dustin): get_children_encoded(self, parent, identity)
 
-        raise NotImplementedError()
+        for h in mr.models.kv.handler.Handler.list():
+            yield (h.name, h.version)
 
     def get_handler(self, handler_name):
         """Return a handler-definition object."""
 
-        return mr.models.kv.handler.Handler.get_by_workflow_and_name(
-            self.__workflow, 
-            handler_name)
+        return mr.models.kv.handler.get(self.__workflow, handler_name)
 
-    def add_handler(self, handler_definition):
+    def create_handler(self, hd):
         """Store the given new handler."""
 
-        mr.models.kv.handler.Handler.create(
-            self.__workflow, 
-            handler_definition.name, 
-            handler_definition.description,
-            handler_definition.version,
-            handler_definition.source_code)
+        h = mr.models.kv.handler.Handler(
+                workflow=self.__workflow, 
+                name=hd.name, 
+                description=hd.description,
+                source_code=hd.source_code)
 
-    def update_handler(self, handler_definition):
+        h.save()
+
+        return h
+
+    def update_handler(self, hd):
         """Update the given existing handler."""
 
-        mr.models.kv.handler.Handler.update_by_workflow_and_name(
-            self.__workflow, 
-            handler_definition.name, 
-            handler_definition.description, 
-            handler_definition.version,
-            handler_definition.source_code)
+        h = mr.models.kv.handler.get(self.__workflow, hd.name)
+
+        h.description = hd.description
+        h.source_code = hd.source_code
+        h.argument_spec = hd.argument_spec
+        h.source_type = hd.source_type
+
+        h.save()
+
+        return h
 
     def delete_handler(self, handler_name):
         """Delete the given handler."""
 
-        mr.models.kv.handler.Handler.delete_by_workflow_and_name(
-            self.__workflow, 
-            handler_name)
+        h = mr.models.kv.handler.get(self.__workflow, handler_name)
+        h.delete(self.__workflow, handler_name)
 
 
 class Handlers(object):
@@ -206,14 +224,15 @@ class Handlers(object):
                      updated_handler_names)
 
         for new_handler_name in new_handler_names:
-            mr.models.kv.handler.Handler.create(
-                self.__workflow, new_handler_name, description, source, 
-               version)
+            hd = self.__source.get_handler(new_handler_name)
+            self.__library.create_handler(hd)
+
+        for updated_handler_name in updated_handler_names:
+            hd = self.__source.get_handler(updated_handler_name)
+            self.__library.update_handler(hd)
 
         for deleted_handler_name in deleted_handler_names:
-            mr.models.kv.handler.Handler.delete_by_workflow_and_name(
-                self.__workflow, 
-                deleted_handler_name)
+            self.__library.delete_handler(deleted_handler_name)
 
     def run_handler(self, name, arguments, **scope_references):
         locals_ = {}
