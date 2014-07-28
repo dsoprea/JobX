@@ -35,59 +35,38 @@ class _StepLibrary(object):
 
 class Step(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_STEP
+    key_field = 'name'
 
-    workflow_name = mr.models.kv.model.Field()
-    step_name = mr.models.kv.model.Field()
+    name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
-    argument_spec = mr.models.kv.model.Field()
-    code_hash = mr.models.kv.model.Field()
-    code_type = mr.models.kv.model.Field()
-    code_body = mr.models.kv.model.Field()
+    handler_name = mr.models.kv.model.Field()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, workflow=None, *args, **kwargs):
         super(Step, self).__init__(self, *args, **kwargs)
+
+        self.__workflow = workflow
         self.__library = None
 
-    @classmethod
-    def create(cls, workflow, step_name, description, argument_spec, 
-               dynamic_code):
-        assert issubclass(
-                workflow.__class__,
-                mr.models.kv.workflow.Workflow)
+    def get_identity(self):
+        return (self.__workflow.name, self.name)
 
-        (code_type, code_body) = dynamic_code
+## TODO(dustin): Determine whether this should be an object method or class 
+##               method.
+#    def get_library_for_workflow(self, workflow):
+#        if self.__library is None:
+#            self.__library = _StepLibrary(self, workflow)
+#
+#        return self.__library
+#
+    def set_workflow(self, workflow):
+        self.__workflow = workflow
 
-        assert code_type in mr.constants.CODE_TYPES
-        assert code_body
+    @property
+    def workflow(self):
+        return self.__workflow
 
-        for name, type_name in argument_spec.items():
-            getattr(sys.modules['__builtin__'], type_name)
+def get(workflow, step_name):
+    m = Step.get_and_build((workflow.name, step_name), step_name)
+    m.set_workflow(workflow)
 
-        code_hash = hashlib.sha1(code_body.encode('ASCII')).hexdigest()
-
-        data = {
-            'workflow_name': workflow.workflow_name,
-            'description': description,
-            'argument_spec': argument_spec,
-            'code_hash': code_hash,
-            'code_type': code_type,
-            'code_body': code_body,
-        }
-
-        return cls.create_entity((workflow.workflow_name, step_name), data)
-
-    @classmethod
-    def get_by_workflow_and_name(cls, workflow, step_name):
-        data = cls.get_by_identity((workflow.workflow_name, step_name))
-
-        print(data)
-
-        return Step(step_name=step_name, **data)
-
-# TODO(dustin): Determine whether this should be an object method or class 
-#               method.
-    def get_library_for_workflow(self, workflow):
-        if self.__library is None:
-            self.__library = _StepLibrary(self, workflow)
-
-        return self.__library
+    return m

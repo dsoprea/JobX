@@ -10,21 +10,17 @@ import pprint
 
 import mr.config.log
 import mr.models.kv.workflow
+import mr.models.kv.handler
 
-description = "Create a workflow entity"
+description = "Get a handler entity"
 
 parser = argparse.ArgumentParser(description=description)
 
-parser.add_argument('name', help='Name')
-parser.add_argument('description', help='Description')
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('handler_name', help='Handler name')
 
 args = parser.parse_args()
 
-w = mr.models.kv.workflow.Workflow(
-        name=args.name, 
-        description=args.description, 
-        handlers_state='')
-
-w.save()
-
-pprint.pprint(w)
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+handler = mr.models.kv.handler.get(workflow, args.handler_name)
+handler.delete()

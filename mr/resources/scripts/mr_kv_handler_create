@@ -1,0 +1,61 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+import select
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.handler
+
+description = "Create a step entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+
+#    name = mr.models.kv.model.Field()
+#    description = mr.models.kv.model.Field()
+#    argument_spec = mr.models.kv.model.Field()
+#    source_type = mr.models.kv.model.Field()
+#    source_code = mr.models.kv.model.Field()
+
+
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('name', help='Name')
+parser.add_argument('description', help='Description')
+parser.add_argument('source_type', help='Source language')
+
+parser.add_argument('-a', '--argument', 
+                    required=True, 
+                    action='append', 
+                    nargs=2, 
+                    help='Argument name and type (must be valid)')
+
+args = parser.parse_args()
+
+stdin_waiting = select.select([sys.stdin], [], [], 0)[0]
+if not stdin_waiting:
+    print("Please provide code via STDIN.")
+    sys.exit(1)
+
+source_code = sys.stdin.read().strip()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+
+s = mr.models.kv.handler.Handler(
+        workflow=workflow, 
+        name=args.name, 
+        description=args.description,
+        argument_spec=dict(args.argument),
+        source_type=args.source_type,
+        source_code=source_code)
+
+s.save()
+
+pprint.pprint(s)

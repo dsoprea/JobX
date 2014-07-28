@@ -20,113 +20,122 @@ _decode = lambda encoded: json.loads(encoded)
 _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
 
-class Field(str):
-    pass
+class Field(object):
+    def __init__(self, is_required=True):
+        self.__is_required = is_required
+
+    @property
+    def is_required(self):
+        return self.__is_required
 
 
 class Model(object):
     entity_class = None
+    key_field = None
 
-    def __init__(self, *args, **fields):
-        expected_fields = set(self.__get_field_names())
+    def __init__(self, is_stored=False, *args, **fields):
+        cls = self.__class__
+
+        # If the key wasn't given, assign it randomly.
+        if cls.key_field not in fields:
+            key = cls.make_opaque()
+            _logger.debug("Model [%s] was not loaded with key-field [%s]. "
+                          "Generating key: [%s]", 
+                          cls.entity_class, cls.key_field, key)
+
+            fields[cls.key_field] = key
+
+        # Make sure we received all of the fields.
+
+        all_fields = set(self.__get_field_names())
+        required_fields = set(self.__get_required_field_names())
         actual_fields = set(fields)
 
-        assert actual_fields == expected_fields, \
-               "Fields given [%s] do not match fields expected [%s]." % \
-               (actual_fields, expected_fields)
+        assert actual_fields.issuperset(required_fields), \
+               "Fields given [%s] do not subsume required fields [%s]." % \
+               (actual_fields, required_fields)
+
+        for missing_optional in (all_fields - required_fields):
+            fields[missing_optional] = None
 
         for k, v in fields.items():
             setattr(self, k, v)
 
-    def __get_field_names(self):
-        # We use None so we don't error with the private attributes.
-        comparator = lambda k: issubclass(
-                                getattr(self.__class__, k, None).__class__, 
-                                Field)
-
-        return filter(comparator, dir(self))
-
-    def get_data(self):
-        return dict([(k, getattr(self, k)) for k in self.__get_field_names()])
-
-    def update(self, **fields):
-        for k, v in fields.items():
-            setattr(self, k, v)
+        # Reflects whether or not the data came from storage.
+        self.__is_stored = is_stored
 
     def __repr__(self):
-        return ('<' + self.__class__.__name__ + ' ' + 
-                      str(self.get_data()) + '>')
+        cls = self.__class__
 
-    @classmethod
-    def create_entity(cls, identity, data={}):
-        identity = cls.__flatten_identity(identity)
-        parent = (_ENTITY_ROOT, cls.entity_class)
+        return ('<%s [%s] %s>' % 
+                (cls.__name__, getattr(self, cls.key_field), self.get_data()))
 
-        _logger.debug("Creating entity of type [%s] with parent [%s]: [%s]", 
-                      cls.entity_class, parent, identity)
+    def __get_required_field_names(self):
+        cls = self.__class__
 
-        try:
-            cls.create_only_encoded(parent, identity, data)
-        except etcd.exceptions.EtcdPreconditionException:
-            pass
+        for field_name in self.__get_field_names():
+            if getattr(cls, field_name).is_required is True:
+                yield field_name
+
+    def __get_field_names(self):
+        cls = self.__class__
+
+        # We use None so we don't error with the private attributes.
+
+        for attr in dir(self):
+            if issubclass(getattr(cls, attr, None).__class__, Field):
+                yield attr
+
+    def get_data(self):
+        cls = self.__class__
+
+        return dict([(k, getattr(self, k)) 
+                     for k 
+                     in self.__get_field_names()
+                     if k != cls.key_field])
+
+    def get_key(self):
+        cls = self.__class__
+
+        return getattr(self, cls.key_field)
+
+    def save(self):
+        cls = self.__class__
+
+        identity = self.get_identity()
+
+        if self.__is_stored is True:
+            cls.__update_entity(
+                    identity, 
+                    self.get_data())
         else:
-            return identity
+            cls.__create_entity(
+                    identity, 
+                    self.get_data())
 
-        # Re-raising here rather than in the catch above makes for cleaner 
-        # logging (no exception-from-exception messages).
-        raise ValueError("Entity [%s] identity with parent [%s] already "
-                         "exists: %s" % 
-                         (cls.entity_class, parent, identity))
+        self.__is_stored = True
 
-    @classmethod
-    def delete_entity(cls, identity):
-        identity = cls.__flatten_identity(identity)
-        parent = (_ENTITY_ROOT, cls.entity_class)
+    def delete(self):
+        cls = self.__class__
 
-        _logger.debug("Deleting entity of type [%s] with parent [%s]: [%s]", 
-                      cls.entity_class, parent, identity)
+        identity = self.get_identity()
 
-        cls.delete(parent, identity)
+        cls.__delete_entity(identity)
+        self.__is_stored = False
 
-    @classmethod
-    def update_entity(cls, identity, data={}):
-        identity = cls.__flatten_identity(identity)
-        parent = (_ENTITY_ROOT, cls.entity_class)
+    def list(self):
+        cls = self.__class__
+        return cls.__list_entities()
 
-        _logger.debug("Updating entity of type [%s] with parent [%s]: [%s]", 
-                      cls.entity_class, parent, identity)
-
-        try:
-            cls.update_only_encoded(parent, identity, data)
-        except etcd.exceptions.EtcdPreconditionException:
-            pass
-        else:
-            return identity
-
-        # Re-raising here rather than in the catch above makes for cleaner 
-        # logging (no exception-from-exception messages).
-        raise ValueError("Entity [%s] identity with parent [%s] doesn't "
-                         "exist: %s" % 
-                         (cls.entity_class, parent, identity))
+    def get_identity(self):
+        raise NotImplementedError()
 
     @classmethod
-    def get_by_identity(cls, identity):
-        parent = (_ENTITY_ROOT, cls.entity_class)
+    def get_and_build(cls, identity, key):
+        data = cls.__get_entity(identity)
+        data[cls.key_field] = key
 
-        _logger.debug("Getting entity of type [%s] with parent [%s]: [%s]", 
-                      cls.entity_class, parent, identity)
-
-        return cls.get_encoded(parent, identity)
-
-    @classmethod
-    def get_children_identity(cls, partial_identity):
-        parent = (_ENTITY_ROOT, cls.entity_class)
-
-        _logger.debug("Getting children entities of type [%s] with parent "
-                      "[%s]: [%s]", 
-                      cls.entity_class, parent, partial_identity)
-
-        return cls.get_children_encoded(parent, partial_identity)
+        return cls(True, **data)
 
     @classmethod
     def make_opaque(cls):
@@ -138,8 +147,124 @@ class Model(object):
         return hashlib.sha1(str(random.random()).encode('ASCII')).hexdigest()
 
     @classmethod
+    def __create_entity(cls, identity, data={}):
+        identity = cls.__flatten_identity(identity)
+        parent = (_ENTITY_ROOT, cls.entity_class)
+
+        _logger.debug("Creating [%s] entity with parent [%s]: [%s]", 
+                      cls.entity_class, parent, identity)
+
+        try:
+            cls.__create_only_encoded(parent, identity, data)
+        except etcd.exceptions.EtcdPreconditionException:
+            pass
+        else:
+            return identity
+
+        # Re-raising here rather than in the catch above makes for cleaner 
+        # logging (no exception-from-exception messages).
+        raise ValueError("[%s] entity identity with parent [%s] already "
+                         "exists: [%s]" % 
+                         (cls.entity_class, parent, identity))
+
+    @classmethod
+    def __update_entity(cls, identity, data={}):
+        identity = cls.__flatten_identity(identity)
+        parent = (_ENTITY_ROOT, cls.entity_class)
+
+        _logger.debug("Updating [%s] entity with parent [%s]: [%s]", 
+                      cls.entity_class, parent, identity)
+
+        try:
+            cls.__update_only_encoded(parent, identity, data)
+        except etcd.exceptions.EtcdPreconditionException:
+            pass
+        else:
+            return identity
+
+        # Re-raising here rather than in the catch above makes for cleaner 
+        # logging (no exception-from-exception messages).
+        raise ValueError("[%s] entity identity with parent [%s] doesn't "
+                         "exist: [%s]" % 
+                         (cls.entity_class, parent, identity))
+
+    @classmethod
+    def __delete_entity(cls, identity):
+        identity = cls.__flatten_identity(identity)
+        parent = (_ENTITY_ROOT, cls.entity_class)
+
+        _logger.debug("Deleting [%s] entity with parent [%s]: [%s]", 
+                      cls.entity_class, parent, identity)
+
+        cls.__delete(parent, identity)
+
+    @classmethod
+    def __get_entity(cls, identity):
+        parent = (_ENTITY_ROOT, cls.entity_class)
+
+        _logger.debug("Getting [%s] entity with parent [%s]: [%s]", 
+                      cls.entity_class, parent, identity)
+
+        return cls.__get_encoded(parent, identity)
+
+    @classmethod
+    def __get_encoded(cls, parent, identity):
+        key = cls.__key_from_identity(parent, identity)
+        response = _etcd.node.get(key)
+        return _decode(response.node.value)
+
+    @classmethod
     def __flatten_key(cls, key):
         return '/' + '/'.join(key)
+
+#    @classmethod
+#    def set(cls, parent, identity, value):
+#        key = cls.__key_from_identity(parent, identity)
+#        return _etcd.node.set(key, value)
+#
+    @classmethod
+    def __update_only_encoded(cls, parent, identity, value):
+        key = cls.__key_from_identity(parent, identity)
+        return _etcd.node.update_only(key, _encode(value))
+
+    @classmethod
+    def __create_only_encoded(cls, parent, identity, value):
+        key = cls.__key_from_identity(parent, identity)
+        return _etcd.node.create_only(key, _encode(value))
+
+    @classmethod
+    def __delete(cls, parent, identity):
+        key = cls.__key_from_identity(parent, identity)
+        return _etcd.node.delete(key)
+
+# TODO(dustin): We might be fine assuming implicit directory-creation, but 
+#               will have enough information to automate it if needed, later.
+#
+#    @classmethod
+#    def directory_create_only(cls, parent, name):
+#        return _etcd.directory.create_only(
+#                cls.__key_from_identity(parent, name))
+
+    @classmethod
+    def __list_entities(cls):
+        parent = (_ENTITY_ROOT, cls.entity_class)
+
+        _logger.debug("Getting children [%s] entities with parent [%s].", 
+                      cls.entity_class, parent)
+
+        return cls.__list_encoded(parent, ())
+
+    @classmethod
+    def __list_encoded(parent, identity):
+        key = cls.__key_from_identity(parent, identity)
+
+# TODO(dustin): We still need to confirm that we can get children without being 
+#               recursive. Update the documentation, either way.
+        response = _etcd.node.get(key)
+        for child in response.node.children:
+            # Don't just decode the data, but derive the identity for this 
+            # child as well (clip the search-key path-prefix from the child-key).
+            yield (child.key[len(key) + 1:], _decode(child.value))
 
     @classmethod
     def __flatten_identity(cls, identity):
@@ -153,14 +278,14 @@ class Model(object):
             for part in identity:
                 if '-' in part or \
                    '/' in part:
-                    raise ValueError("Identity has reserved characters: %s" % 
+                    raise ValueError("Identity has reserved characters: [%s]" % 
                                      (identity,))
 
             return '/'.join(identity)
         else:
             if '-' in identity or \
                '/' in identity:
-                raise ValueError("Identity has reserved characters: %s" % 
+                raise ValueError("Identity has reserved characters: [%s]" % 
                                  (identity,))
 
             return identity
@@ -176,81 +301,3 @@ class Model(object):
                       parent, identity, flat_key)
 
         return flat_key
-
-    @classmethod
-    def set(cls, parent, identity, value):
-        return _etcd.node.set(
-                cls.__key_from_identity(parent, identity), 
-                value)
-
-    @classmethod
-    def set_encoded(cls, parent, identity, value):
-        return _etcd.node.set(
-                cls.__key_from_identity(parent, identity), 
-                _encode(value))
-
-    @classmethod
-    def update(cls, parent, identity, value):
-        return _etcd.node.set(
-                cls.__key_from_identity(parent, identity), 
-                value)
-
-    @classmethod
-    def update_encoded(cls, parent, identity, value):
-        return _etcd.node.update_only(
-                cls.__key_from_identity(parent, identity), 
-                _encode(value))
-
-    @classmethod
-    def create_only(cls, parent, identity, value):
-        return _etcd.node.create_only(
-                cls.__key_from_identity(parent, identity), 
-                value)
-
-    @classmethod
-    def create_only_encoded(cls, parent, identity, value):
-        return _etcd.node.create_only(
-                cls.__key_from_identity(parent, identity), 
-                _encode(value))
-
-    @classmethod
-    def delete(cls, parent, identity):
-        return _etcd.node.delete(cls.__key_from_identity(parent, identity))
-
-# TODO(dustin): We might be fine assuming implicit directory-creation, but 
-#               will have enough information to automate it if needed, later.
-#
-#    @classmethod
-#    def directory_create_only(cls, parent, name):
-#        return _etcd.directory.create_only(
-#                cls.__key_from_identity(parent, name))
-
-    @classmethod
-    def get(cls, parent, identity):
-        key = cls.__key_from_identity(parent, identity)
-        response = _etcd.node.get(key)
-        return response.node.value
-
-    @classmethod
-    def get_children(cls, parent, identity):
-        key = cls.__key_from_identity(parent, identity)
-        response = _etcd.node.get(key, recursive=True)
-        for child in response.node.children:
-            yield child.value
-
-    @classmethod
-    def get_encoded(cls, parent, identity):
-        key = cls.__key_from_identity(parent, identity)
-        response = _etcd.node.get(key)
-        return _decode(response.node.value)
-
-    @classmethod
-    def get_children_encoded(cls, parent, identity):
-        key = cls.__key_from_identity(parent, identity)
-
-# TODO(dustin): We still need to confirm that we can get children without being recursive. Update the documentation, either way.
-        response = _etcd.node.get(key)
-        for child in response.node.children:
-            # Don't just decode the data, but derive the identity for this 
-            # child as well (subtract the search-key from the child-key).
-            yield (child.key[len(key) + 1:], _decode(child.value))

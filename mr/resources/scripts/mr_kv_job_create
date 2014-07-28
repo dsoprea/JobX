@@ -24,8 +24,15 @@ parser.add_argument('initial_step_name', help='Initial step name')
 
 args = parser.parse_args()
 
-workflow = mr.models.kv.workflow.Workflow.get_by_name(args.workflow_name)
-initial_step = mr.models.kv.step.Step.get_by_workflow_and_name(workflow, args.initial_step_name)
-r = mr.models.kv.job.Job.create(workflow, args.job_name, args.description, initial_step)
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+initial_step = mr.models.kv.step.get(workflow, args.initial_step_name)
 
-pprint.pprint(r)
+job = mr.models.kv.job.Job(
+        workflow=workflow, 
+        name=args.job_name, 
+        description=args.description, 
+        initial_step_name=initial_step.name)
+
+job.save()
+
+pprint.pprint(job)

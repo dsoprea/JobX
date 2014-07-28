@@ -6,38 +6,29 @@ import mr.models.kv.workflow
 
 class Job(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_JOB
+    key_field = 'name'
 
-    job_name = mr.models.kv.model.Field()
-    workflow_name = mr.models.kv.model.Field()
+    name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
     initial_step_name = mr.models.kv.model.Field()
 
-    @classmethod
-    def __build_from_data(cls, job_name, data):
-        return Job(job_name=job_name, **data)
+    def __init__(self, workflow=None, *args, **kwargs):
+        super(Job, self).__init__(self, *args, **kwargs)
 
-    @classmethod
-    def create(cls, workflow, job_name, description, initial_step):
-        assert issubclass(
-                workflow.__class__, 
-                mr.models.kv.workflow.Workflow)
+        self.__workflow = workflow
 
-        assert issubclass(
-                initial_step.__class__, 
-                mr.models.kv.step.Step)
+    def get_identity(self):
+        return (self.__workflow.name, self.name)
 
-        data = {
-            'workflow_name': workflow.workflow_name,
-            'description': description,
-            'initial_step_name': initial_step.step_name
-        }
+    def set_workflow(self, workflow):
+        self.__workflow = workflow
 
-        identity = (workflow.workflow_name, job_name)
-        cls.create_entity(identity, data)
+    @property
+    def workflow(self):
+        return self.__workflow
 
-        return cls.__build_from_data(job_name, data)
+def get(workflow, job_name):
+    m = Job.get_and_build((workflow.name, job_name), job_name)
+    m.set_workflow(workflow)
 
-    @classmethod
-    def get_by_workflow_and_name(cls, workflow, job_name):
-        data = cls.get_by_identity((workflow.workflow_name, job_name))
-        return cls.__build_from_data(job_name, data)
+    return m

@@ -5,12 +5,17 @@ import os
 import fnmatch
 import hashlib
 import logging
+import collections
 
 import mr.config.handler
 import mr.models.kv.handler
 import mr.models.kv.workflow
 
 _logger = logging.getLogger(__name__)
+
+HANDLER_DEFINITION_CLS = collections.namedtuple(
+                            'HandlerDefinition', 
+                            ['name', 'version', 'description', 'source_code'])
 
 
 class SourceAdapter(object):
@@ -88,12 +93,27 @@ class LibraryAdapter(object):
     """
 
     def list_handlers(self):
-        """Enumerate all of the stored handlers, and their versions."""
+        """Enumerate the handlers as (name, version)."""
 
         raise NotImplementedError()        
 
-    def update_handlers(self, source):
-        """Push all of the current handlers, and their state string."""
+    def get_handler(self, handler_name):
+        """Return a handler-definition object."""
+
+        raise NotImplementedError()
+
+    def add_handler(self, handler_definition):
+        """Store the given new handler."""
+
+        raise NotImplementedError()
+
+    def update_handler(self, handler_definition):
+        """Update the given existing handler."""
+
+        raise NotImplementedError()
+
+    def delete_handler(self, handler_name):
+        """Delete the given handler."""
 
         raise NotImplementedError()
 
@@ -105,22 +125,72 @@ class KvLibraryAdapter(LibraryAdapter):
         self.__workflow = workflow
 
     def list_handlers(self):
+        """Enumerate the handlers as (name, version)."""
+# TODO(dustin): get_children_encoded(self, parent, identity)
+
         raise NotImplementedError()
 
-    def update_handlers(self, source):
+    def get_handler(self, handler_name):
+        """Return a handler-definition object."""
+
+        return mr.models.kv.handler.Handler.get_by_workflow_and_name(
+            self.__workflow, 
+            handler_name)
+
+    def add_handler(self, handler_definition):
+        """Store the given new handler."""
+
+        mr.models.kv.handler.Handler.create(
+            self.__workflow, 
+            handler_definition.name, 
+            handler_definition.description,
+            handler_definition.version,
+            handler_definition.source_code)
+
+    def update_handler(self, handler_definition):
+        """Update the given existing handler."""
+
+        mr.models.kv.handler.Handler.update_by_workflow_and_name(
+            self.__workflow, 
+            handler_definition.name, 
+            handler_definition.description, 
+            handler_definition.version,
+            handler_definition.source_code)
+
+    def delete_handler(self, handler_name):
+        """Delete the given handler."""
+
+        mr.models.kv.handler.Handler.delete_by_workflow_and_name(
+            self.__workflow, 
+            handler_name)
+
+
+class Handlers(object):
+    """The base-class of our handler code libraries."""
+
+    def __init__(self, workflow, source, library):
+        self.__workflow = workflow
+        self.__source = source
+        self.__library = library
+
+        self.__state = None
+
+        self.update_handlers()
+
+    def update_handlers(self):
         """Push all of the current handlers, and their state string."""
 
-        handler_state = source.get_handlers_state()
+        handler_state = self.__source.get_handlers_state()
 
         if self.__workflow.handlers_state == handler_state:
             _logger.debug("No update necessary.")
             return
 
-        stored_handlers = self.list_handlers()
+        stored_handlers = self.__library.list_handlers()
         stored_handler_versions = set(stored_handlers)
         stored_handler_names = [n for (n, v) in stored_handlers]
 
-        source_handlers = source.list_handlers()
+        source_handlers = self.__source.list_handlers()
         source_handler_versions = set(source_handlers)
         source_handler_names = [n for (n, v) in source_handlers]
 
@@ -135,20 +205,15 @@ class KvLibraryAdapter(LibraryAdapter):
                      new_handler_names, deleted_handler_names, 
                      updated_handler_names)
 
-        mr.models.kv.handler.
+        for new_handler_name in new_handler_names:
+            mr.models.kv.handler.Handler.create(
+                self.__workflow, new_handler_name, description, source, 
+               version)
 
-
-# TODO(dustin): get_children_encoded(self, parent, identity)
-        raise NotImplementedError()
-
-
-class Handlers(object):
-    """The base-class of our handler code libraries."""
-
-    def __init__(self, workflow):
-        self.__state = None
-
-        self.__update_handlers()
+        for deleted_handler_name in deleted_handler_names:
+            mr.models.kv.handler.Handler.delete_by_workflow_and_name(
+                self.__workflow, 
+                deleted_handler_name)
 
     def run_handler(self, name, arguments, **scope_references):
         locals_ = {}
@@ -168,23 +233,23 @@ class Handlers(object):
 
             return locals_[id_]
 
-    def __update_handlers(self):
-        """Get a list of handlers and the classifications that they represent.
-        """
-
-# TODO(dustin): Load the handlers from etcd.
-
-        sum_function = """\
-return xrange(arg1)
-"""
-
-        handlers = {}
-
-        def add_handler(name, code_lines):
-            handlers[name] = self.__compile(code_lines)
-
-        self.__state = (1, datetime.datetime.now(), handlers)
-
+#    def __update_handlers(self):
+#        """Get a list of handlers and the classifications that they represent.
+#        """
+#
+## TODO(dustin): Load the handlers from etcd.
+#
+#        sum_function = """\
+#return xrange(arg1)
+#"""
+#
+#        handlers = {}
+#
+#        def add_handler(name, code_lines):
+#            handlers[name] = self.__compile(code_lines)
+#
+#        self.__state = (1, datetime.datetime.now(), handlers)
+#
     @property
     def list_version(self):
         return self.__state[0]

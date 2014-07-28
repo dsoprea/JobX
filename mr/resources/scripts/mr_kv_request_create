@@ -27,13 +27,15 @@ parser.add_argument('-c', '--context', help='Context information')
 
 args = parser.parse_args()
 
-workflow = mr.models.kv.workflow.Workflow.get_by_name(args.workflow_name)
-job = mr.models.kv.job.Job.get_by_workflow_and_name(workflow, args.job_name)
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+job = mr.models.kv.job.get(workflow, args.job_name)
 
-result = mr.models.kv.request.Request.create(
-            workflow, 
-            job, 
-            dict(args.argument), 
-            args.context)
+r = mr.models.kv.request.Request(
+        workflow=workflow, 
+        job_name=job.name, 
+        arguments=dict(args.argument), 
+        context=args.context)
 
-pprint.pprint(result)
+r.save()
+
+pprint.pprint(r)

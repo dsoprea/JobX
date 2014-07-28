@@ -6,40 +6,30 @@ import mr.models.kv.workflow
 
 class Request(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_REQUEST
+    key_field = 'request_id'
 
     request_id = mr.models.kv.model.Field()
-    workflow_name = mr.models.kv.model.Field()
     job_name = mr.models.kv.model.Field()
     arguments = mr.models.kv.model.Field()
     context = mr.models.kv.model.Field()
 
-    @classmethod
-    def __build_from_data(cls, request_id, data):
-        return Request(request_id=request_id, **data)
+    def __init__(self, workflow=None, *args, **kwargs):
+        super(Request, self).__init__(self, *args, **kwargs)
 
-    @classmethod
-    def create(cls, workflow, job, arguments, context=None):
-        assert issubclass(
-                workflow.__class__,
-                mr.models.kv.workflow.Workflow)
+        self.__workflow = workflow
 
-        assert issubclass(
-                job.__class__,
-                mr.models.kv.job.Job)
+    def get_identity(self):
+        return (self.__workflow.name, self.request_id)
 
-        data = {
-            'workflow_name': workflow.workflow_name,
-            'job_name': job.job_name,
-            'arguments': arguments,
-            'context': context,
-        }
+    def set_workflow(self, workflow):
+        self.__workflow = workflow
 
-        request_id = cls.make_opaque()
-        identity = (workflow.workflow_name, request_id)
-        cls.create_entity(identity, data)
-        return cls.__build_from_data(request_id, data)
+    @property
+    def workflow(self):
+        return self.__workflow
 
-    @classmethod
-    def get_by_workflow_and_id(cls, workflow, request_id):
-        data = cls.get_by_identity((workflow.workflow_name, request_id))
-        return cls.__build_from_data(request_id, data)
+def get(workflow, request_id):
+    m = Request.get_and_build((workflow.name, request_id), request_id)
+    m.set_workflow(workflow)
+
+    return m

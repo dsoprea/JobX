@@ -19,6 +19,6 @@ parser.add_argument('name', help='Name')
 
 args = parser.parse_args()
 
-w = mr.models.kv.workflow.Workflow.get_by_name(args.name)
+workflow = mr.models.kv.workflow.get(args.name)
 
-pprint.pprint(w)
+pprint.pprint(workflow)

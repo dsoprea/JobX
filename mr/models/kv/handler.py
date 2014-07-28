@@ -1,5 +1,6 @@
 import hashlib
 import sys
+import hashlib
 
 import mr.constants
 import mr.models.kv.model
@@ -8,35 +9,36 @@ import mr.models.kv.workflow
 
 class Handler(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_HANDLER
+    key_field = 'name'
 
-    workflow_name = mr.models.kv.model.Field()
+    name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
-    source = mr.models.kv.model.Field()
-    version = mr.models.kv.model.Field()
+    argument_spec = mr.models.kv.model.Field()
+    source_type = mr.models.kv.model.Field()
+    source_code = mr.models.kv.model.Field()
+    version = mr.models.kv.model.Field(is_required=False)
 
-    @classmethod
-    def create(cls, workflow, handler_name, description, source, 
-               version):
-        assert issubclass(
-                workflow.__class__,
-                mr.models.kv.workflow.Workflow)
+    def __init__(self, workflow=None, *args, **kwargs):
+        super(Handler, self).__init__(self, *args, **kwargs)
 
-        data = {
-            'workflow_name': workflow.workflow_name,
-            'description': description,
-            'source': source,
-            'version': version }
+        self.version = hashlib.sha1(self.source_code).hexdigest()
+        self.__workflow = workflow
 
-        return self.create_entity((workflow.workflow_name, handler_name), data)
+    def get_identity(self):
+        return (self.__workflow.name, self.name)
 
-    @classmethod
-    def get_by_workflow_and_name(cls, workflow, handler_name):
-        data = self.get_by_identity((workflow.workflow_name, handler_name))
-        return Handler(handler_name=handler_name, **data)
+    def set_workflow(self, workflow):
+        self.__workflow = workflow
 
-    def update(self, **kwargs):
-        super(Handler, self).update(**kwargs)
+    @property
+    def workflow(self):
+        return self.__workflow
 
-        return self.__class__.update_entity(
-                (workflow.workflow_name, handler_name), 
-                self.get_data())
+def get(workflow, handler_name):
+    m = Handler.get_and_build(
+            (workflow.name, handler_name),
+            handler_name)
+
+    m.set_workflow(workflow)
+
+    return m
