@@ -33,10 +33,12 @@ class SourceAdapter(object):
 class FilesystemSourceAdapter(SourceAdapter):
     """Retrieves sourcecode for handlers from the local filesystem."""
 
-    def __init__(self):
+    def __init__(self, workflow):
         if os.path.exists(mr.config.handler.SOURCE_PATH) is False:
             raise EnvironmentError("Source path does not exist: [%s]" % 
                                    (mr.config.handler.SOURCE_PATH,))
+
+        self.__workflow = workflow
 
     def __enumerate_handlers(self):
         pattern = mr.config.handler.SOURCE_FILENAME_PATTERN
@@ -75,6 +77,7 @@ class FilesystemSourceAdapter(SourceAdapter):
         with open(filepath) as f:
             source_code = f.read()
 
+# TODO(dustin): Move ".json" to config.
         meta_filepath = filepath + '.json'
 
         with open(meta_filepath) as f:

@@ -17,5 +17,14 @@ class Workflow(mr.models.kv.model.Model):
     def get_identity(self):
         return self.name
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, o):
+        return o and self.name == o.name
+
+    def __ne__(self, o):
+        return o is None or self.name != o.name
+
 def get(workflow_name):
     return Workflow.get_and_build(workflow_name, workflow_name)
