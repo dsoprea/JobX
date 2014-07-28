@@ -107,8 +107,13 @@ class Model(object):
 
         return getattr(self, cls.key_field)
 
+    def presave(self):
+        pass
+
     def save(self):
         cls = self.__class__
+
+        self.presave()
 
         identity = self.get_identity()
 
