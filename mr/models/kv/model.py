@@ -35,16 +35,19 @@ class Model(object):
     key_field = None
 
     def __init__(self, is_stored=False, *args, **fields):
+        self.__load_from_data(is_stored, data)
+
+    def __load_from_data(self, is_stored=False, data):
         cls = self.__class__
 
         # If the key wasn't given, assign it randomly.
-        if cls.key_field not in fields:
+        if cls.key_field not in data:
             key = cls.make_opaque()
             _logger.debug("Model [%s] was not loaded with key-field [%s]. "
                           "Generating key: [%s]", 
                           cls.entity_class, cls.key_field, key)
 
-            fields[cls.key_field] = key
+            data[cls.key_field] = key
 
         # Make sure we received all of the fields.
 
@@ -57,9 +60,9 @@ class Model(object):
                (actual_fields, required_fields)
 
         for missing_optional in (all_fields - required_fields):
-            fields[missing_optional] = None
+            data[missing_optional] = None
 
-        for k, v in fields.items():
+        for k, v in data.items():
             setattr(self, k, v)
 
         # Reflects whether or not the data came from storage.
@@ -135,6 +138,14 @@ class Model(object):
 
         cls.__delete_entity(identity)
         self.__is_stored = False
+
+    def refresh(self):
+        cls = self.__class__
+
+        data = cls.__get_entity(self.get_identity())
+        data[cls.key_field] = self.get_key()
+
+        self.__load_from_data(True, data)
 
     def get_identity(self):
         raise NotImplementedError()
