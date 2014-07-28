@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 
-handlers = mr.models.kv.handler.Handler.list(workflow)
+handlers = mr.models.kv.handler.Handler.list(workflow.name)
 
 for handler in handlers:
     pprint.pprint(handler)

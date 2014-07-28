@@ -11,6 +11,7 @@ import mr.config.etcd
 logging.getLogger('etcd').setLevel(logging.INFO)
 
 _ENTITY_ROOT = 'entities'
+_REPR_DATA_TRUNCATE_WIDTH = 20
 
 _logger = logging.getLogger(__name__)
 
@@ -67,8 +68,15 @@ class Model(object):
     def __repr__(self):
         cls = self.__class__
 
+        truncated_data = {}
+        for k, v in self.get_data().items():
+            if len(v) > _REPR_DATA_TRUNCATE_WIDTH:
+                v = v[:_REPR_DATA_TRUNCATE_WIDTH] + '...'
+
+            truncated_data[k] = v
+
         return ('<%s [%s] %s>' % 
-                (cls.__name__, getattr(self, cls.key_field), self.get_data()))
+                (cls.__name__, getattr(self, cls.key_field), truncated_data))
 
     def __get_required_field_names(self):
         cls = self.__class__
@@ -127,11 +135,14 @@ class Model(object):
         raise NotImplementedError()
 
     @classmethod
+    def __build_from_data(cls, key, data):
+        data[cls.key_field] = key
+        return cls(True, **data)
+
+    @classmethod
     def get_and_build(cls, identity, key):
         data = cls.__get_entity(identity)
-        data[cls.key_field] = key
-
-        return cls(True, **data)
+        return cls.__build_from_data(key, data)
 
     @classmethod
     def make_opaque(cls):
@@ -242,7 +253,17 @@ class Model(object):
 #                cls.__key_from_identity(parent, name))
 
     @classmethod
-    def list_entities(cls, identity_prefix):
+    def list(cls, *args):
+        parent = (_ENTITY_ROOT, cls.entity_class)
+
+        _logger.debug("Getting children [%s] entities of parent [%s].", 
+                      cls.entity_class, parent)
+
+        for key, data in cls.__list_encoded(parent, args):
+            yield cls.__build_from_data(key, data)
+
+    @classmethod
+    def __list_entities(cls, identity_prefix):
         parent = (_ENTITY_ROOT, cls.entity_class)
 
         _logger.debug("Getting children [%s] entities of parent [%s].", 

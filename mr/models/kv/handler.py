@@ -34,10 +34,6 @@ class Handler(mr.models.kv.model.Model):
     def workflow(self):
         return self.__workflow
 
-    @classmethod
-    def list(cls, workflow):
-        return cls.list_entities(workflow.name)
-
 def get(workflow, handler_name):
     m = Handler.get_and_build(
             (workflow.name, handler_name),
