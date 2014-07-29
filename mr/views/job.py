@@ -2,11 +2,11 @@ import logging
 import flask
 import json
 
-import mr.models.kv.workflow
 import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.request
 import mr.models.kv.handler
+import mr.workflow_manager
 
 import mr.job_engine
 #import mr.request
@@ -38,7 +38,12 @@ def _get_arguments_from_request(required_argument_keys):
 
 @job_bp.route('/<workflow_name>/<job_name>', methods=['POST'])
 def job_submit(workflow_name, job_name):
-    workflow = mr.models.kv.workflow.get(workflow_name)
+    # Use the workflow-manager in order to verify that we're managing this 
+    # workflow.
+    wm = mr.workflow_manager.get_wm()
+    mw = wm.get(workflow_name)
+    workflow = mw.workflow
+
     job = mr.models.kv.job.get(workflow, job_name)
     step = mr.models.kv.step.get(workflow, job.initial_step_name)
     handler = mr.models.kv.handler.get(workflow, step.handler_name)
@@ -62,7 +67,7 @@ def job_submit(workflow_name, job_name):
 
     request.save()
 
-    rr = mr.job_engine.get_request_receiver().get_request_receiver()
+    rr = mr.job_engine.get_request_receiver()
     result = rr.process_request(request)
 
     return flask.jsonify(result)
