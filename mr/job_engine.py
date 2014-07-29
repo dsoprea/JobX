@@ -4,14 +4,11 @@ import functools
 
 import gevent.pool
 
-import nsq.consumer
-
+import mr.models.kv.job
 import mr.models.kv.step
-
-#import mr.handlers
-#import mr.steps
-#import mr.invoked_step
-#import mr.invoked_steps
+import mr.models.kv.handler
+import mr.queue_manager
+import mr.workflow_manager
 
 _logger = logging.getLogger(__name__)
 
@@ -99,12 +96,68 @@ class JobEngine(object):
         return self.__steps
 
 
-class _RequestReceiver(object):
-    def __push_request(self, request):
+class _StepProcessor(object):
+    """Receives queued items to be processed."""
+
+    def handle_map(self, message_handler, step_info):
+        """Corresponds to steps received with a type of ST_MAP."""
+# TODO(dustin): Finish.
         raise NotImplementedError()
 
-    def __block_for_result(self, request):
+    def handle_reduce(self, message_handler, step_info):
+        """Corresponds to steps received with a type of ST_REDUCE."""
+# TODO(dustin): Finish.
         raise NotImplementedError()
+
+    def handle_action(self, message_handler, step_info):
+        """Corresponds to steps received with a type of ST_ACTION."""
+# TODO(dustin): Finish.
+        raise NotImplementedError()
+
+_sp = _StepProcessor()
+
+def get_step_processor():
+    return _jd
+
+
+class _RequestReceiver(object):
+    """Receives the web-requests to push new jobs."""
+
+    def __init__(self):
+        self.__q = mr.queue_manager.get_queue()
+        self.__wm = mr.workflow_manager.get_wm()
+
+    def __push_request(self, request):
+# TODO(dustin): We should move all of this into a general 'job control' class that can be used for incoming requests as well as from yields in the handlers.
+        w = self.__wm.get(request.workflow_name)
+        j = mr.models.kv.job.get(w, request.job_name)
+        s = mr.models.kv.step.get(w, j.initial_step_name)
+        h = mr.models.kv.handler.get(w, s.handler_name)
+
+# TODO(dustin): Going to have to add some context information to the request 
+#               record (like a 'complete' or 'request' key that can be blocked 
+#               on).
+
+        topic = 'mr.%s' + request.workflow_name
+        job_class = s.step_type
+
+# TODO(dustin): Validate that the arguments are valid for the handler.
+
+        data = {
+            'request_id': request.request_id,
+            'arguments': request.arguments,
+            'job_name': j.job_name,
+            'handler_name': s.handler_name,
+        }
+
+# TODO(dustin): We might increment the number of total steps processed on the 
+#               request.
+        self.__q.producer.push_one(topic, job_class, data)
+
+    def __block_for_result(self, request):
+# TODO(dustin): Come back to this once we're there.
+        pass
+#        raise NotImplementedError()
 
     def process_request(self, request):
         self.__push_request(request)

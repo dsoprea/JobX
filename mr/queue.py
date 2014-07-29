@@ -4,6 +4,9 @@ import collections
 
 import mr.config.queue
 import mr.utility
+import mr.queue_processor
+import mr.models.kv.step
+import mr.job_engine
 
 QUEUE_INSTANCE_CLS = collections.namedtuple(
                         'QueueInstance', 
@@ -30,10 +33,39 @@ class _JobPackager(object):
 
 packager = _JobPackager()
 
+def get_packager():
+    return packager
+
 
 class MessageHandler(object):
+    """Received all data coming off the queue."""
+
+    def __init__(self, *args, **kwargs):
+        super(MessageHandler, self).__init__(*args, **kwargs)
+        self.__sp = mr.job_engine.get_step_processor()
+
     def classify_message(self, message):
         return packager.decode(message)
+
+    def handle_map(self, connection, message, context):
+        """Corresponds to steps received with a type of ST_MAP."""
+# TODO(dustin): Verify that we don't want to convert "message" to something 
+#               else, rather than passing directly.
+        self.__sp.handle_map(self, message)
+
+    def handle_reduce(self, connection, message, context):
+        """Corresponds to steps received with a type of ST_REDUCE."""
+
+# TODO(dustin): Verify that we don't want to convert "message" to something 
+#               else, rather than passing directly.
+        self.__sp.handle_map(self, message)
+
+    def handle_action(self, connection, message, context):
+        """Corresponds to steps received with a type of ST_ACTION."""
+
+# TODO(dustin): Verify that we don't want to convert "message" to something 
+#               else, rather than passing directly.
+        self.__sp.handle_action(self, message)
 
 
 class QueueControl(object):
@@ -62,14 +94,6 @@ class QueueProducer(object):
 
 
 class QueueConsumer(object):
-# TODO(dustin): For simplicity under lack of requirement, we only support one 
-#               topic and one channel right now. Once we get into it, we might
-#               get a clearer idea.
-#
-#    def __init__(self):
-#        self.__topic = topic
-#        self.__channel = channel
-
     def is_alive(self):
         """Determine if the client is still connected/healthy."""
 
@@ -97,28 +121,3 @@ class QueueFactory(object):
 
     def get_control(self):
         raise NotImplementedError()
-
-_QUEUE = None
-
-def boot():
-    global _QUEUE
-
-    _logger.info("Starting queue consumer.")
-
-    queue_factory_cls = mr.utility.load_cls_from_string(
-                            mr.config.queue.QUEUE_FACTORY_FQ_CLASS)
-
-    factory = queue_factory_cls()
-
-    _QUEUE = QUEUE_INSTANCE_CLS(
-                consumer=factory.get_consumer(),
-                producer=factory.get_producer(),
-                control=factory.get_control())
-
-    _QUEUE.start()
-
-def stop():
-    _logger.info("Stopping queue consumer.")
-
-    if _QUEUE is not None:
-        _QUEUE.stop()

@@ -5,9 +5,13 @@ import mr.constants
 import mr.models.kv.model
 import mr.models.kv.workflow
 
+# Step-types
+
 ST_MAP    = 'map'
 ST_REDUCE = 'reduce'
 ST_ACTION = 'action'
+
+STEP_TYPES = (ST_MAP, ST_REDUCE, ST_ACTION)
 
 
 class _StepLibrary(object):

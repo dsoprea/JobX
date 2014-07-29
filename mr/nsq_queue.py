@@ -14,7 +14,7 @@ _logger = logging.getLogger(__name__)
 class NsqMessageHandler(
         nsq.message_handler.MessageHandler, 
         mr.queue.MessageHandler):
-# TODO(dustin): We need to manage steps, here.
+
     pass
 
 
@@ -36,6 +36,8 @@ class _NsqProducerConsumer(
                     max_in_flight, 
                     message_handler_cls=message_handler_cls)
 
+        self.__p = mr.queue.get_packager()
+
     def is_alive(self):
         return self.__c.is_alive
 
@@ -46,14 +48,21 @@ class _NsqProducerConsumer(
         self.__c.stop()
 
     def push_one(self, topic, job_class, data):
-        self.__c.connection_election.elect_connection().pub(topic, message)
+        message = self.__p.encode(job_class, data)
+        c = self.__c.connection_election.elect_connection()
+        c.pub(topic, message_raw)
 
     def push_many(self, topic, job_class, data_list):
-        self.__c.connection_election.elect_connection().mpub(topic, messages)
+        messages = [self.__p.encode(job_class, data) for data in data_list]
+        c = self.__c.connection_election.elect_connection()
+        c.mpub(topic, messages)
 
 
 class NsqQueueFactory(mr.queue.QueueFactory):
     def __init__(self):
+# TODO(dustin): For simplicity under lack of requirement, we only support one 
+#               topic and one channel right now. Once we get into it, we might
+#               get a clearer idea.
         context_list = [(mr.config.nsq_queue.TOPIC, 
                          mr.config.nsq_queue.CHANNEL)]
 
