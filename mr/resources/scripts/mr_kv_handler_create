@@ -17,15 +17,6 @@ description = "Create a step entity"
 
 parser = argparse.ArgumentParser(description=description)
 
-
-#    name = mr.models.kv.model.Field()
-#    description = mr.models.kv.model.Field()
-#    argument_spec = mr.models.kv.model.Field()
-#    source_type = mr.models.kv.model.Field()
-#    source_code = mr.models.kv.model.Field()
-
-
-
 parser.add_argument('workflow_name', help='Workflow name')
 parser.add_argument('name', help='Name')
 parser.add_argument('description', help='Description')
@@ -50,7 +41,7 @@ workflow = mr.models.kv.workflow.get(args.workflow_name)
 
 s = mr.models.kv.handler.Handler(
         workflow=workflow, 
-        name=args.name, 
+        handler_name=args.name, 
         description=args.description,
         argument_spec=dict(args.argument),
         source_type=args.source_type,

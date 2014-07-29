@@ -8,23 +8,23 @@ _logger = logging.getLogger(__name__)
 
 class Workflow(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_WORKFLOW
-    key_field = 'name'
+    key_field = 'workflow_name'
 
-    name = mr.models.kv.model.Field()
+    workflow_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
-    handlers_state = mr.models.kv.model.Field()
+    handlers_state = mr.models.kv.model.Field(is_required=False)
 
     def get_identity(self):
-        return self.name
+        return self.workflow_name
 
     def __hash__(self):
-        return hash(self.name)
+        return hash(self.workflow_name)
 
     def __eq__(self, o):
-        return o and self.name == o.name
+        return o and self.workflow_name == o.workflow_name
 
     def __ne__(self, o):
-        return o is None or self.name != o.name
+        return o is None or self.workflow_name != o.workflow_name
 
 def get(workflow_name):
     return Workflow.get_and_build(workflow_name, workflow_name)

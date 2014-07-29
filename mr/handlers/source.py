@@ -77,8 +77,8 @@ class FilesystemSourceAdapter(SourceAdapter):
         with open(filepath) as f:
             source_code = f.read()
 
-# TODO(dustin): Move ".json" to config.
-        meta_filepath = filepath + '.json'
+        meta_filepath = filepath + \
+                        mr.config.handler.SOURCE_META_FILENAME_SUFFIX
 
         with open(meta_filepath) as f:
             meta = json.load(f)

@@ -5,6 +5,10 @@ import mr.constants
 import mr.models.kv.model
 import mr.models.kv.workflow
 
+ST_MAP    = 'map'
+ST_REDUCE = 'reduce'
+ST_ACTION = 'action'
+
 
 class _StepLibrary(object):
     def __init__(self, step_kv, workflow):
@@ -35,10 +39,11 @@ class _StepLibrary(object):
 
 class Step(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_STEP
-    key_field = 'name'
+    key_field = 'step_name'
 
-    name = mr.models.kv.model.Field()
+    step_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
+    step_type = mr.models.kv.model.EnumField(['map', 'reduce', 'action'])
     handler_name = mr.models.kv.model.Field()
 
     def __init__(self, workflow=None, *args, **kwargs):
@@ -48,7 +53,7 @@ class Step(mr.models.kv.model.Model):
         self.__library = None
 
     def get_identity(self):
-        return (self.__workflow.name, self.name)
+        return (self.__workflow.workflow_name, self.step_name)
 
 ## TODO(dustin): Determine whether this should be an object method or class 
 ##               method.
@@ -66,7 +71,7 @@ class Step(mr.models.kv.model.Model):
         return self.__workflow
 
 def get(workflow, step_name):
-    m = Step.get_and_build((workflow.name, step_name), step_name)
+    m = Step.get_and_build((workflow.workflow_name, step_name), step_name)
     m.set_workflow(workflow)
 
     return m

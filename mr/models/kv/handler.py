@@ -9,9 +9,9 @@ import mr.models.kv.workflow
 
 class Handler(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_HANDLER
-    key_field = 'name'
+    key_field = 'handler_name'
 
-    name = mr.models.kv.model.Field()
+    handler_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
     argument_spec = mr.models.kv.model.Field()
     source_type = mr.models.kv.model.Field()
@@ -25,7 +25,7 @@ class Handler(mr.models.kv.model.Model):
         self.__workflow = workflow
 
     def get_identity(self):
-        return (self.__workflow.name, self.name)
+        return (self.__workflow.workflow_name, self.handler_name)
 
     def update_version(self):
         self.version = hashlib.sha1(self.source_code).hexdigest()
@@ -42,7 +42,7 @@ class Handler(mr.models.kv.model.Model):
 
 def get(workflow, handler_name):
     m = Handler.get_and_build(
-            (workflow.name, handler_name),
+            (workflow.workflow_name, handler_name),
             handler_name)
 
     m.set_workflow(workflow)

@@ -56,7 +56,7 @@ class KvLibraryAdapter(LibraryAdapter):
         """Enumerate the handlers as (name, version)."""
 
         for h in mr.models.kv.handler.Handler.list():
-            yield (h.name, h.version)
+            yield (h.handler_name, h.version)
 
     def get_handler(self, handler_name):
         """Return a handler-definition object."""
@@ -64,7 +64,7 @@ class KvLibraryAdapter(LibraryAdapter):
         handler = mr.models.kv.handler.get(self.__workflow, handler_name)
 
         return mr.handlers.general.HANDLER_DEFINITION_CLS(
-                name=handler.name,
+                name=handler.handler_name,
                 version=handler.version,
                 description=handler.description,
                 source_code=handler.source_code,

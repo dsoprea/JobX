@@ -18,4 +18,5 @@ parser.add_argument('name', help='Name')
 
 args = parser.parse_args()
 
-mr.models.kv.workflow.Workflow.delete_by_name(args.name)
+w = mr.models.kv.workflow.get(args.name)
+w.delete()

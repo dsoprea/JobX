@@ -7,7 +7,5 @@ SOURCE_PATH = os.path.abspath(os.path.join(
                 'handlers'))
 
 SOURCE_FILENAME_PATTERN = 'handler_*.py'
-
 SOURCE_FILENAME_TEMPLATE = '%(name)s.py'
-
-KV_STORAGE_KEY = '/handlers'
+SOURCE_META_FILENAME_SUFFIX = '.json'

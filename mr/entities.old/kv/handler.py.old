@@ -1,9 +1,0 @@
-import collections
-
-HANDLER_CLS = collections.namedtuple(
-                'Handler', 
-                ('workflow_name',
-                 'handler_name',
-                 'description',
-                 'source',
-                 'version'))

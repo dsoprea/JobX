@@ -63,7 +63,7 @@ class JobEngine(object):
 
         cb = functools.partial(self.__spawn_step, invoked_steps)
         gen = self.__handlers.run_handler(
-                invoked_step.name, 
+                invoked_step.step_name, 
                 invoked_step.arguments)
 
         g = gevent.pool.Group()
@@ -97,3 +97,22 @@ class JobEngine(object):
     @property
     def steps(self):
         return self.__steps
+
+
+class _RequestReceiver(object):
+    def __push_request(self, request):
+        raise NotImplementedError()
+
+    def __block_for_result(self, request):
+        raise NotImplementedError()
+
+    def process_request(self, request):
+        self.__push_request(request)
+        r = self.__block_for_result(request)
+
+        return r
+
+_rr = _RequestReceiver()
+
+def get_request_receiver():
+    return _rr

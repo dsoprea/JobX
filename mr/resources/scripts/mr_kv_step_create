@@ -46,9 +46,10 @@ workflow = mr.models.kv.workflow.get(args.workflow_name)
 
 s = mr.models.kv.step.Step(
         workflow=workflow, 
-        name=args.name, 
+        step_name=args.name, 
         description=args.description, 
-        handler_name=args.handler_name)
+        handler_name=args.handler_name,
+        step_type=mr.models.kv.step.ST_MAP)
 
 s.save()
 

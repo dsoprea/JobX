@@ -21,23 +21,51 @@ _decode = lambda encoded: json.loads(encoded)
 _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
 
+class ValidationError(Exception):
+    def __init__(self, name, message):
+        extended_message = ("%s: %s" % (name, message))
+        super(ValidationError, self).__init__(extended_message)
+
+
 class Field(object):
     def __init__(self, is_required=True):
         self.__is_required = is_required
 
+    def validate(self, name, value):
+        """Raise ValidationError on error."""
+
+        pass
+
+    def is_empty(self, value):
+        return not value
+
     @property
     def is_required(self):
         return self.__is_required
+
+# We want to get everything using this as the default (not Field).
+TextField = Field
+
+
+class EnumField(Field):
+    def __init__(self, values, *args, **kwargs):
+        super(EnumField, self).__init__(*args, **kwargs)
+
+        self.__values = values
+
+    def validate(self, name, value):
+        if value not in self.__values:
+            raise ValidationError(name, "Not a valid enum value.")
 
 
 class Model(object):
     entity_class = None
     key_field = None
 
-    def __init__(self, is_stored=False, *args, **fields):
-        self.__load_from_data(is_stored, data)
+    def __init__(self, is_stored=False, *args, **data):
+        self.__load_from_data(data, is_stored=is_stored)
 
-    def __load_from_data(self, is_stored=False, data):
+    def __load_from_data(self, data, is_stored=False):
         cls = self.__class__
 
         # If the key wasn't given, assign it randomly.
@@ -52,15 +80,32 @@ class Model(object):
         # Make sure we received all of the fields.
 
         all_fields = set(self.__get_field_names())
-        required_fields = set(self.__get_required_field_names())
-        actual_fields = set(fields)
+        actual_fields = set(data.keys())
 
-        assert actual_fields.issuperset(required_fields), \
-               "Fields given [%s] do not subsume required fields [%s]." % \
-               (actual_fields, required_fields)
+        # Make sure that only valid fields were given.
 
-        for missing_optional in (all_fields - required_fields):
-            data[missing_optional] = None
+        invalid_fields = actual_fields - all_fields
+        if invalid_fields:
+            raise ValueError("Invalid fields were given: %s" % (invalid_fields,))
+
+        # Fill-in any missing fields.
+
+        for field_name in (all_fields - actual_fields):
+            data[field_name] = None
+
+        # Determine which fields had empty data.
+
+        data_info = [(field, 
+                      getattr(self, field), 
+                      data[field]) 
+                     for field 
+                     in all_fields]
+
+        for name, field_obj, datum in data_info:
+            if field_obj.is_required and field_obj.is_empty(datum):
+                raise ValidationError(name, "Required field is empty/omitted")
+
+            field_obj.validate(name, datum)
 
         for k, v in data.items():
             setattr(self, k, v)
@@ -73,7 +118,8 @@ class Model(object):
 
         truncated_data = {}
         for k, v in self.get_data().items():
-            if len(v) > _REPR_DATA_TRUNCATE_WIDTH:
+            if issubclass(v.__class__, (basestring, unicode)) is True and \
+               len(v) > _REPR_DATA_TRUNCATE_WIDTH:
                 v = v[:_REPR_DATA_TRUNCATE_WIDTH] + '...'
 
             truncated_data[k] = v
@@ -145,7 +191,7 @@ class Model(object):
         data = cls.__get_entity(self.get_identity())
         data[cls.key_field] = self.get_key()
 
-        self.__load_from_data(True, data)
+        self.__load_from_data(data, is_stored=True)
 
     def get_identity(self):
         raise NotImplementedError()

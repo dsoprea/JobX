@@ -15,6 +15,10 @@ class _WorkflowManager(object):
         h = mr.handlers.general.Handlers(s, l)
         self.__workflows[workflow] = h
 
+    def get(self, workflow_name):
+        return self.__workflows[workflow_name]
+
+
 _wm = _WorkflowManager()
 
 def get_wm():

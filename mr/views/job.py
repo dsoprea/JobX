@@ -6,6 +6,7 @@ import mr.models.kv.workflow
 import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.request
+import mr.models.kv.handler
 
 import mr.job_engine
 #import mr.request
@@ -37,16 +38,12 @@ def _get_arguments_from_request(required_argument_keys):
 
 @job_bp.route('/<workflow_name>/<job_name>', methods=['POST'])
 def job_submit(workflow_name, job_name):
-    w = mr.models.kv.workflow.WorkflowKv()
-    workflow = w.get_by_name(workflow_name)
+    workflow = mr.models.kv.workflow.get(workflow_name)
+    job = mr.models.kv.job.get(workflow, job_name)
+    step = mr.models.kv.step.get(workflow, job.initial_step_name)
+    handler = mr.models.kv.handler.get(workflow, step.handler_name)
 
-    j = mr.models.kv.job.JobKv()
-    job = j.get_by_workflow_and_name(workflow, job_name)
-
-    s = mr.models.kv.step.StepKv()
-    step = s.get_by_workflow_and_name(workflow, job.initial_step_name)
-
-    required_argument_keys = set(step.argument_spec.keys())
+    required_argument_keys = set(handler.argument_spec.keys())
 
     try:
         arguments = _get_arguments_from_request(required_argument_keys)
@@ -54,21 +51,18 @@ def job_submit(workflow_name, job_name):
         message = "%s: %s" % (str(e), json.dumps(list(required_argument_keys)))
         return (message, 406)
 
-    r = mr.models.kv.request.RequestKv()
-
     context = {
         'requester_ip': flask.request.remote_addr
     }
 
-    request = r.create_request(workflow, job, arguments, context)
+    request = mr.models.kv.request.Request(
+                job_name=job.job_name, 
+                arguments=arguments, 
+                context=context)
 
-    jl = mr.job_engine.JobEngine(request, workflow, job, step)
-    result = jl.run(arguments)
+    request.save()
 
-#    w = mr.workflow.get_workflow(111)
-#    r = mr.request.Request(w, job, )
-#    w.submit_job(r)
-#
-#    result = r.wait_for_result()
-#
+    rr = mr.job_engine.get_request_receiver().get_request_receiver()
+    result = rr.process_request(request)
+
     return flask.jsonify(result)

@@ -5,12 +5,17 @@ import collections
 import mr.config.queue
 import mr.utility
 
-QUEUE_INSTANCE_CLS = collections.namedtuple('QueueInstance', ['consumer', 'producer', 'control'])
+QUEUE_INSTANCE_CLS = collections.namedtuple(
+                        'QueueInstance', 
+                        ['consumer', 'producer', 'control'])
 
 _logger = logging.getLogger(__name__)
 
 
 class _JobPackager(object):
+# TODO(dustin): Consider using protobuf. It's always faster if we know some 
+#               structure beforehand.
+
     def encode(self, job_class, data):
         return pickle.dumps((1, job_class, data))
 
@@ -60,9 +65,10 @@ class QueueConsumer(object):
 # TODO(dustin): For simplicity under lack of requirement, we only support one 
 #               topic and one channel right now. Once we get into it, we might
 #               get a clearer idea.
-    def __init__(self):
-        self.__topic = topic
-        self.__channel = channel
+#
+#    def __init__(self):
+#        self.__topic = topic
+#        self.__channel = channel
 
     def is_alive(self):
         """Determine if the client is still connected/healthy."""
@@ -97,8 +103,10 @@ _QUEUE = None
 def boot():
     global _QUEUE
 
-    factory_cls = mr.utility.load_cls_from_string(
-                    mr.config.queue.QUEUE_FACTORY_FQ_CLASS)
+    _logger.info("Starting queue consumer.")
+
+    queue_factory_cls = mr.utility.load_cls_from_string(
+                            mr.config.queue.QUEUE_FACTORY_FQ_CLASS)
 
     factory = queue_factory_cls()
 
@@ -110,5 +118,7 @@ def boot():
     _QUEUE.start()
 
 def stop():
+    _logger.info("Stopping queue consumer.")
+
     if _QUEUE is not None:
         _QUEUE.stop()

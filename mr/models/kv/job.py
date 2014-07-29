@@ -6,9 +6,9 @@ import mr.models.kv.workflow
 
 class Job(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_JOB
-    key_field = 'name'
+    key_field = 'job_name'
 
-    name = mr.models.kv.model.Field()
+    job_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
     initial_step_name = mr.models.kv.model.Field()
 
@@ -18,7 +18,7 @@ class Job(mr.models.kv.model.Model):
         self.__workflow = workflow
 
     def get_identity(self):
-        return (self.__workflow.name, self.name)
+        return (self.__workflow.workflow_name, self.job_name)
 
     def set_workflow(self, workflow):
         self.__workflow = workflow
@@ -28,7 +28,7 @@ class Job(mr.models.kv.model.Model):
         return self.__workflow
 
 def get(workflow, job_name):
-    m = Job.get_and_build((workflow.name, job_name), job_name)
+    m = Job.get_and_build((workflow.workflow_name, job_name), job_name)
     m.set_workflow(workflow)
 
     return m

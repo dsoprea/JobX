@@ -32,7 +32,7 @@ job = mr.models.kv.job.get(workflow, args.job_name)
 
 r = mr.models.kv.request.Request(
         workflow=workflow, 
-        job_name=job.name, 
+        job_name=job.job_name, 
         arguments=dict(args.argument), 
         context=args.context)
 
