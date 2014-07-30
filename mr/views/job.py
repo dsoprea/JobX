@@ -9,7 +9,7 @@ import mr.models.kv.handler
 import mr.workflow_manager
 
 import mr.job_engine
-#import mr.request
+import mr.models.kv.queue
 
 _logger = logging.getLogger(__name__)
 
@@ -18,23 +18,16 @@ job_bp = flask.Blueprint(
             __name__,
             url_prefix='/job')
 
-def _get_arguments_from_request(required_argument_keys):
+def _get_arguments_from_request():
     request_data = flask.request.get_json()
 
     if request_data is None:
         raise ValueError("No arguments given (1)")
 
     try:
-        request_arguments = request_data['arguments']
+        return request_data['arguments']
     except KeyError:
         raise ValueError("No arguments given (2)")
-
-    request_argument_keys = set(request_arguments.keys())
-
-    if request_argument_keys != required_argument_keys:
-        raise ValueError("One or more arguments are missing")
-
-    return request_arguments
 
 @job_bp.route('/<workflow_name>/<job_name>', methods=['POST'])
 def job_submit(workflow_name, job_name):
@@ -51,10 +44,10 @@ def job_submit(workflow_name, job_name):
     required_argument_keys = set(handler.argument_spec.keys())
 
     try:
-        arguments = _get_arguments_from_request(required_argument_keys)
+        raw_arguments = _get_arguments_from_request(required_argument_keys)
+        arguments = handler.cast_arguments(raw_arguments)
     except ValueError as e:
-        message = "%s: %s" % (str(e), json.dumps(list(required_argument_keys)))
-        return (message, 406)
+        return (str(e), 406)
 
     context = {
         'requester_ip': flask.request.remote_addr
@@ -67,7 +60,15 @@ def job_submit(workflow_name, job_name):
 
     request.save()
 
+    message_parameters = mr.models.kv.queue.QUEUE_MESSAGE_PARAMETERS_CLS(
+                            workflow=workflow,
+                            request=request,
+                            job=job, 
+                            step=step,
+                            handler=handler,
+                            arguments=arguments)
+
     rr = mr.job_engine.get_request_receiver()
-    result = rr.process_request(request)
+    result = rr.process_request(message_parameters)
 
     return flask.jsonify(result)

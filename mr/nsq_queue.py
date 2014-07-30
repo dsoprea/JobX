@@ -47,15 +47,13 @@ class _NsqProducerConsumer(
     def stop(self):
         self.__c.stop()
 
-    def push_one(self, topic, job_class, data):
-        message = self.__p.encode(job_class, data)
+    def push_one_raw(self, topic, raw_message):
         c = self.__c.connection_election.elect_connection()
-        c.pub(topic, message_raw)
+        c.pub(topic, raw_message)
 
-    def push_many(self, topic, job_class, data_list):
-        messages = [self.__p.encode(job_class, data) for data in data_list]
+    def push_many_raw(self, topic, raw_message_list):
         c = self.__c.connection_election.elect_connection()
-        c.mpub(topic, messages)
+        c.mpub(topic, raw_message_list)
 
 
 class NsqQueueFactory(mr.queue.QueueFactory):

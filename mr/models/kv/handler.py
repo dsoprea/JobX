@@ -20,6 +20,7 @@ class Handler(mr.models.kv.model.Model):
 
     def __init__(self, workflow=None, *args, **kwargs):
         super(Handler, self).__init__(self, *args, **kwargs)
+        self.update_required_args()
         self.update_version()
 
         self.__workflow = workflow
@@ -27,14 +28,40 @@ class Handler(mr.models.kv.model.Model):
     def get_identity(self):
         return (self.__workflow.workflow_name, self.handler_name)
 
+    def update_required_args(self):
+        self.__required_args_s = set(self.argument_spec.keys())
+
     def update_version(self):
         self.version = hashlib.sha1(self.source_code).hexdigest()
 
     def presave(self):
+        self.update_required_args()
         self.update_version()
 
     def set_workflow(self, workflow):
         self.__workflow = workflow
+
+    def cast_arguments(self, args):
+        """Return the arguments cast as the appropriate types. Raise a 
+        ValueError if the arguments are not fulfilled, or can not be cast.
+        """
+
+        actual_args_s = set(args.items())
+
+        if actual_args_s != self.__required_args_s:
+            raise ValueError("Missing arguments: %s" % (actual_args_s,))
+
+        distilled = {}
+        for name, cls in self.argument_spec.items():
+            datum = args[name]
+
+            try:
+                distilled[name] = cls(datum)
+            except ValueError as e:
+                raise ValueError("Invalid value [%s] for argument [%s] of type "
+                                 "[%s]: [%s]" % (datum, name, cls.__name__, str(e)))
+
+        return distilled
 
     @property
     def workflow(self):
