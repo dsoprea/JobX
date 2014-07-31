@@ -9,6 +9,7 @@ import mr.models.kv.step
 import mr.models.kv.request
 import mr.models.kv.job
 import mr.models.kv.handler
+import mr.models.kv.invocation
 import mr.utility
 import mr.queue_processor
 import mr.job_engine
@@ -28,6 +29,7 @@ _QUEUED_DATA_V1_CLS = collections.namedtuple(
 QUEUE_MESSAGE_PARAMETERS_CLS = collections.namedtuple(
                                     'InflatedModels', 
                                     ['workflow', 
+                                     'invocation',
                                      'request', 
                                      'job', 
                                      'step',
@@ -133,6 +135,10 @@ class _QueueMessageFunnel(object):
             wm = workflow_manager.get_wm()
             workflow = wm.get(workflow_name)
             request = mr.models.kv.request.get(workflow, request_id)
+            invocation = mr.models.kv.invocation.get(
+                            workflow, 
+                            request.invocation_id)
+
             job = mr.models.kv.job.get(workflow, request.job_name)
             step = mr.models.kv.step.get(workflow, step_name)
             handler = mr.models.kv.step.get(workflow, step.handler_name)
@@ -142,6 +148,7 @@ class _QueueMessageFunnel(object):
 
         return QUEUE_MESSAGE_PARAMETERS_CLS(
                 workflow=workflow,
+                invocation=invocation,
                 request=request,
                 job=job,
                 step=step,
@@ -187,12 +194,6 @@ class MessageHandler(object):
         """Corresponds to steps received with a type of ST_REDUCE."""
 
         handler = functools.partial(self.__sp.handle_reduce, connection)
-        self.__dispatch(handler, context)
-
-    def handle_action(self, connection, message, context):
-        """Corresponds to steps received with a type of ST_ACTION."""
-
-        handler = functools.partial(self.__sp.handle_action, connection)
         self.__dispatch(handler, context)
 
 

@@ -14,29 +14,29 @@ class Handler(mr.models.kv.model.Model):
     handler_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
     argument_spec = mr.models.kv.model.Field()
-    source_type = mr.models.kv.model.Field()
+    source_type = mr.models.kv.model.EnumField(mr.constants.CODE_TYPES)
     source_code = mr.models.kv.model.Field()
     version = mr.models.kv.model.Field(is_required=False)
 
     def __init__(self, workflow=None, *args, **kwargs):
         super(Handler, self).__init__(self, *args, **kwargs)
-        self.update_required_args()
-        self.update_version()
+        self.__update_required_args()
+        self.__update_version()
 
         self.__workflow = workflow
 
     def get_identity(self):
         return (self.__workflow.workflow_name, self.handler_name)
 
-    def update_required_args(self):
+    def __update_required_args(self):
         self.__required_args_s = set(self.argument_spec.keys())
 
-    def update_version(self):
+    def __update_version(self):
         self.version = hashlib.sha1(self.source_code).hexdigest()
 
     def presave(self):
-        self.update_required_args()
-        self.update_version()
+        self.__update_required_args()
+        self.__update_version()
 
     def set_workflow(self, workflow):
         self.__workflow = workflow
@@ -52,8 +52,9 @@ class Handler(mr.models.kv.model.Model):
             raise ValueError("Missing arguments: %s" % (actual_args_s,))
 
         distilled = {}
-        for name, cls in self.argument_spec.items():
+        for name, type_name in self.argument_spec.items():
             datum = args[name]
+            cls = getattr(sys.modules['__builtin__'], type_name)
 
             try:
                 distilled[name] = cls(datum)

@@ -10,7 +10,7 @@ class Request(mr.models.kv.model.Model):
 
     request_id = mr.models.kv.model.Field()
     job_name = mr.models.kv.model.Field()
-    arguments = mr.models.kv.model.Field()
+    invocation_id = mr.models.kv.model.Field()
     context = mr.models.kv.model.Field(is_required=False)
 
     def __init__(self, workflow=None, *args, **kwargs):

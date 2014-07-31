@@ -6,6 +6,7 @@ import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.request
 import mr.models.kv.handler
+import mr.models.kv.invocation
 import mr.workflow_manager
 
 import mr.job_engine
@@ -53,15 +54,22 @@ def job_submit(workflow_name, job_name):
         'requester_ip': flask.request.remote_addr
     }
 
+    invocation = mr.models.kv.invocation.Invocation(
+                    step_name=step.step_name,
+                    arguments=arguments)
+
+    invocation.save()
+
     request = mr.models.kv.request.Request(
                 job_name=job.job_name, 
-                arguments=arguments, 
+                invocation_id=invocation.invocation_id,
                 context=context)
 
     request.save()
 
     message_parameters = mr.models.kv.queue.QUEUE_MESSAGE_PARAMETERS_CLS(
                             workflow=workflow,
+                            invocation=invocation,
                             request=request,
                             job=job, 
                             step=step,
