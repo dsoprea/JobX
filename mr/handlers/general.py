@@ -135,9 +135,11 @@ class Handlers(object):
 
         return locals_[id_]
 
-    def run_handler(self, name, arguments, **scope_references):
-        locals_ = {}
-        locals_.update(arguments)
-        locals_.update(scope_references)
+    def run_handler(self, name, arguments):
+#        locals_ = {}
+#        locals_.update(arguments)
+#        locals_.update(scope_references)
+#
+#        exec(self.__compiled[name], globals, locals_)
 
-        exec(self.__compiled[name], globals, locals_)
+        return self.__compiled[name](*arguments)

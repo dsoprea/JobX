@@ -7,6 +7,10 @@ import mr.models.kv.model
 import mr.models.kv.workflow
 
 
+class ArgumentMarshalError(Exception):
+    pass
+
+
 class Handler(mr.models.kv.model.Model):
     entity_class = mr.constants.ID_HANDLER
     key_field = 'handler_name'
@@ -49,7 +53,8 @@ class Handler(mr.models.kv.model.Model):
         actual_args_s = set(args.items())
 
         if actual_args_s != self.__required_args_s:
-            raise ValueError("Missing arguments: %s" % (actual_args_s,))
+            raise ArgumentMarshalError("Arguments missing from request: %s" % 
+                                       (actual_args_s,))
 
         distilled = {}
         for name, type_name in self.argument_spec.items():
@@ -59,8 +64,9 @@ class Handler(mr.models.kv.model.Model):
             try:
                 distilled[name] = cls(datum)
             except ValueError as e:
-                raise ValueError("Invalid value [%s] for argument [%s] of type "
-                                 "[%s]: [%s]" % (datum, name, cls.__name__, str(e)))
+                raise ArgumentMarshalError("Invalid value [%s] for request "
+                                           "argument [%s] of type [%s]: [%s]" %
+                                           (datum, name, cls.__name__, str(e)))
 
         return distilled
 

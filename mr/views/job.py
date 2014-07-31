@@ -8,9 +8,9 @@ import mr.models.kv.request
 import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.workflow_manager
-
 import mr.job_engine
 import mr.models.kv.queue
+import mr.shared_types
 
 _logger = logging.getLogger(__name__)
 
@@ -35,19 +35,19 @@ def job_submit(workflow_name, job_name):
     # Use the workflow-manager in order to verify that we're managing this 
     # workflow.
     wm = mr.workflow_manager.get_wm()
-    mw = wm.get(workflow_name)
-    workflow = mw.workflow
+    managed_workflow = wm.get(workflow_name)
+    workflow = managed_workflow.workflow
 
     job = mr.models.kv.job.get(workflow, job_name)
     step = mr.models.kv.step.get(workflow, job.initial_step_name)
-    handler = mr.models.kv.handler.get(workflow, step.handler_name)
+    handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
 
     required_argument_keys = set(handler.argument_spec.keys())
 
     try:
         raw_arguments = _get_arguments_from_request(required_argument_keys)
         arguments = handler.cast_arguments(raw_arguments)
-    except ValueError as e:
+    except mr.models.kv.handler.ArgumentMarshalError as e:
         return (str(e), 406)
 
     context = {
@@ -67,8 +67,8 @@ def job_submit(workflow_name, job_name):
 
     request.save()
 
-    message_parameters = mr.models.kv.queue.QUEUE_MESSAGE_PARAMETERS_CLS(
-                            workflow=workflow,
+    message_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
+                            managed_workflow=managed_workflow,
                             invocation=invocation,
                             request=request,
                             job=job, 

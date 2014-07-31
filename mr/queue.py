@@ -14,6 +14,7 @@ import mr.utility
 import mr.queue_processor
 import mr.job_engine
 import mr.workflow_manager
+import mr.shared_types
 
 QUEUE_INSTANCE_CLS = collections.namedtuple(
                         'QueueInstance', 
@@ -25,16 +26,6 @@ _QUEUED_DATA_V1_CLS = collections.namedtuple(
                          'request_id', 
                          'step_name', 
                          'arguments'])
-
-QUEUE_MESSAGE_PARAMETERS_CLS = collections.namedtuple(
-                                    'InflatedModels', 
-                                    ['workflow', 
-                                     'invocation',
-                                     'request', 
-                                     'job', 
-                                     'step',
-                                     'handler',
-                                     'arguments'])
 
 # Queue data format versions.
 _QDF_1 = 1
@@ -116,10 +107,12 @@ class _QueueMessageFunnel(object):
 
         assert issubclass(
                 message_parameters.__class__, 
-                QUEUE_MESSAGE_PARAMETERS_CLS) is True
+                mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS) is True
+
+        workflow = message_parameters.managed_workflow.workflow
 
         return _QUEUED_DATA_V1_CLS(
-                workflow_name=message_parameters.workflow.workflow_name,
+                workflow_name=workflow.workflow_name,
                 request_id=message_parameters.request.request_id,
                 step_name=message_parameters.step.step_name,
                 arguments=message_parameters.arguments)
@@ -133,7 +126,9 @@ class _QueueMessageFunnel(object):
             (workflow_name, request_id, step_name, arguments) = deflated
 
             wm = workflow_manager.get_wm()
-            workflow = wm.get(workflow_name)
+            managed_workflow = wm.get(workflow_name)
+            workflow = managed_workflow.workflow
+
             request = mr.models.kv.request.get(workflow, request_id)
             invocation = mr.models.kv.invocation.get(
                             workflow, 
@@ -146,8 +141,8 @@ class _QueueMessageFunnel(object):
             raise ValueError("Queue data format version is invalid: [%s]" % 
                              (format_version,))
 
-        return QUEUE_MESSAGE_PARAMETERS_CLS(
-                workflow=workflow,
+        return mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
+                managed_workflow=managed_workflow,
                 invocation=invocation,
                 request=request,
                 job=job,

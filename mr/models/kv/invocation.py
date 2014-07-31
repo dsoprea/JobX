@@ -27,6 +27,9 @@ class Invocation(mr.models.kv.model.Model):
     # or whether it just performed work and returned.
     result = mr.models.kv.model.Field(is_required=False)
 
+    # Contains scalar exception info, or None.
+    error = mr.models.kv.model.Field(is_required=False)
+
     def __init__(self, workflow=None, *args, **kwargs):
         super(Invocation, self).__init__(self, *args, **kwargs)
         self.__workflow = workflow
