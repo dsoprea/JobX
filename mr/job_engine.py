@@ -2,8 +2,11 @@ import sys
 import logging
 import functools
 import types
+import traceback
 
 import gevent.pool
+
+import etcd.exceptions
 
 import mr.models.kv.job
 import mr.models.kv.step
@@ -15,6 +18,10 @@ import mr.shared_types
 
 _logger = logging.getLogger(__name__)
 
+# Step types
+ST_MAP = 'map'
+ST_REDUCE = 'reduce'
+
 def _queue_map_step_from_parameters(message_parameters):
 # TODO(dustin): We should move all of this logic into a general 'job control' 
 #               class that can be used for incoming requests as well as from 
@@ -25,50 +32,55 @@ def _queue_map_step_from_parameters(message_parameters):
     topic = 'mr.%s' + message_parameters.request.workflow_name
 
 # TODO(dustin): Make "mapper" a constant.
-    self.__q.producer.push_one(topic, 'mapper', message_parameters)
+    self.__q.producer.push_one(topic, ST_MAP, message_parameters)
+
 
 class _StepProcessor(object):
     """Receives queued items to be processed. We are running in our own gthread 
     by the time we're called.
     """
 
-    def __queue_map_step(self, mapped_step, mapped_arguments, original_parameters):
+    def __queue_next_step(self, next_step, next_arguments, original_parameters, 
+                          step_type):
         request = original_parameters.request
         managed_workflow = original_parameters.managed_workflow
         workflow = managed_workflow.workflow
         job = original_parameters.job
         invocation = original_parameters.invocation
 
-        mapped_handler = mr.models.kv.handler.get(
-                            workflow, 
-                            mapped_step.map_handler_name)
-        
-        mapped_arguments = mapped_handler.cast_arguments(
-                                            mapped_arguments)
+        if step_type == ST_MAP:
+            next_handler_name = next_step.map_handler_name
+        elif step_type == ST_REDUCE:
+            next_handler_name = next_step.reduce_handler_name
+        else:
+            raise ValueError("Step type is invalid: [%s]" % (step_type,))
 
-        mapped_invocation = mr.models.kv.invocation.Invocation(
+        next_handler = mr.models.kv.handler.get(
+                            workflow, 
+                            next_handler_name)
+        
+        next_arguments = next_handler.cast_arguments(
+                                            next_arguments)
+
+        next_invocation = mr.models.kv.invocation.Invocation(
                                 parent_invocation_id=\
                                     invocation.invocation_id,
-                                step_name=mapped_step.step_name,
-                                arguments=mapped_arguments,
+                                step_name=next_step.step_name,
+                                arguments=next_arguments,
                             )
 
-        mapped_invocation.save()
+        next_invocation.save()
 
-        mapped_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
+        next_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
             managed_workflow=managed_workflow,
-            invocation=mapped_invocation,
+            invocation=next_invocation,
             request=request,
             job=job,
-            step=mapped_step,
-            handler=mapped_handler,
-            arguments=mapped_arguments)
+            step=next_step,
+            handler=next_handler,
+            arguments=next_arguments)
 
-        _queue_map_step_from_parameters(mapped_parameters)
-
-    def __queue_reduce_step(self, message_parameters):
-# TODO(dustin): Finish.
-        raise NotImplementedError()
+        _queue_map_step_from_parameters(next_parameters)
 
     def handle_map(self, message_handler, message_parameters):
         """Corresponds to steps received with a type of ST_MAP."""
@@ -89,55 +101,103 @@ class _StepProcessor(object):
                     message_parameters.arguments)
 
             if issubclass(r.__class__, types.GeneratorType) is True:
-# TODO(dustin): We need to avoid having to flatten the list of steps in order 
-#               to get the count. If we have to map into 100,000 downstream 
-#               steps, the value of mapreduce will have been lost.
-#
-#               We need to wrote the invocation records, and *then* queue them,
-#               since the information to be queued should be considerably 
-#               lighter.
-#               
-#               We might need to encode down to the raw queue messages from one 
-#               to the next, because that's the only point at which we dump the 
-#               potential girth of the "message parameters" object (which 
-#               describes all of the data for a step, including the arguments).
-                steps = list(r)
+                # The handler must first yield the number of steps that will be 
+                # mapped-to.
+
+                try:
+                    step_count = r.next()
+                except StopIteration:
+                    _logger.error("Handler returned an empty generator. "
+                                  "Weird: [%s]", handler_name)
+                    raise
+
+                if issubclass(step_count.__class__, int) is False:
+                    raise ValueError("We expect an integer step count from "
+                                     "handler [%s], but didn't get it: [%s]" %
+                                     (handler_name, step_count))
 
                 # Post the number of steps that were mapped before we do the 
                 # actual queueing, so our counters decrement correctly.
 
-                step_count = len(steps)
                 invocation.mapped_count = step_count
                 invocation.mapped_waiting = step_count
                 invocation.save()
 
+                i = 0
                 for (mapped_step, mapped_arguments) in steps:
-                    self.__queue_map_step(
+                    self.__queue_next_step(
                         mapped_step, 
                         mapped_arguments, 
-                        message_parameters)
+                        message_parameters,
+                        ST_MAP)
+
+                    i += 1
+
+                if i != step_count:
+                    raise ValueError("The number of steps (%d) yielded by "
+                                     "handler [%s] did not match the "
+                                     "announced count (%d)." % 
+                                     (i, handler_name, step_count))
             else:
                 # The step didn't yield, so it must've done some work and 
                 # returned a result. Store it.
+                #
+                # Since the counter might be updated by something else running 
+                # concurrently, we'll ask for failure if it's been changed 
+                # since we loaded it, and retry until successful.
 
                 invocation.result = r
-# TODO(dustin): We need to use CAS functionality, here: Maybe we can pass in a 
-#               custom condition. As we're using JSON bodies, it might be 
-#               simpler to use indexes (store the index from the retrieve 
-#               inside all models, and allow us to not change a key unless the 
-#               index still matches).
-                invocation.mapped_waiting -= 1
                 invocation.save()
 
-                if invocation.mapped_waiting <= 0:
-                    self.__queue_reduce_step(message_parameters)
+                self.__decrement_parent_invocation(invocation)
 
-        except Exception as e:
-# TODO(dustin): Store the trace, too.
-            invocation.error = str(e)
+# TODO(dustin):
+#   Process:
+#       1. Get parent invocation record.
+#       2. Get the step for the parent invocation record.
+#       3. Collect the results for all steps mapped from the parent invocation. 
+#          We will pass a generator to the reduction handler.
+#
+# TODO(dustin): Can we get a list of keys from the server? Can we iteratively read them, rather than read all of them at once?
+                    pass
+
+#                    self.__queue_next_step(
+#                        mapped_step, 
+#                        mapped_arguments, 
+#                        message_parameters,
+#                        ST_REDUCE)
+        except:
+            invocation.error = traceback.format_exc()
             invocation.save()
 
             raise
+
+    def __queue_reduce_step(self, parent_invocation):
+# TODO(dustin): Finish.
+
+#        result_gen = mr.models.kv.invocation.Invocation.list_keys(
+#                        workflow.workflow_name, 
+#                        invocation.invocation_id,
+#                        )
+        raise NotImplementedError()
+
+    def __decrement_map_parent_invocation(self, invocation):
+
+        while 1:
+            parent_invocation = mr.models.kv.invocation.get(
+                                    invocation.workflow, 
+                                    invocation.parent_invocation_id)
+
+            try:
+                parent_invocation.mapped_waiting -= 1
+                parent_invocation.save(check_index=True)
+            except etcd.exceptions.EtcdPreconditionException:
+                parent_invocation.refresh()
+            else:
+                break
+
+        if parent_invocation.mapped_waiting <= 0:
+            self.__queue_reduce_step(parent_invocation)
 
     def handle_reduce(self, message_handler, message_parameters):
         """Corresponds to steps received with a type of ST_REDUCE."""

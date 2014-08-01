@@ -27,7 +27,7 @@ class Invocation(mr.models.kv.model.Model):
     # or whether it just performed work and returned.
     result = mr.models.kv.model.Field(is_required=False)
 
-    # Contains scalar exception info, or None.
+    # Contains scalar exception traceback.
     error = mr.models.kv.model.Field(is_required=False)
 
     def __init__(self, workflow=None, *args, **kwargs):
@@ -35,9 +35,13 @@ class Invocation(mr.models.kv.model.Model):
         self.__workflow = workflow
 
     def get_identity(self):
+        effective_parent_invocation_id = self.parent_invocation_id \
+                                             if self.parent_invocation_id \
+                                             else 0
+
         return (
             self.__workflow.workflow_name, 
-            self.parent_invocation_id if self.parent_invocation_id else 0,
+            effective_parent_invocation_id,
             self.invocation_id)
 
     def set_workflow(self, workflow):
@@ -48,8 +52,9 @@ class Invocation(mr.models.kv.model.Model):
         return self.__workflow
 
 def get(workflow, invocation_id):
-    m = Step.get_and_build(
-            (workflow.workflow_name, invocation_id), 
+    m = Invocation.get_and_build(
+            (workflow.workflow_name, 
+            invocation_id), 
             invocation_id)
 
     m.set_workflow(workflow)

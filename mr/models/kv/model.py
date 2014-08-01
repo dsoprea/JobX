@@ -159,7 +159,7 @@ class Model(object):
     def presave(self):
         pass
 
-    def save(self):
+    def save(self, check_index=False):
         cls = self.__class__
 
         self.presave()
@@ -169,7 +169,8 @@ class Model(object):
         if self.__is_stored is True:
             cls.__update_entity(
                     identity, 
-                    self.get_data())
+                    self.get_data(),
+                    check_index=check_index)
         else:
             cls.__create_entity(
                     identity, 
@@ -188,10 +189,11 @@ class Model(object):
     def refresh(self):
         cls = self.__class__
 
-        data = cls.__get_entity(self.get_identity())
+        (attributes, data) = cls.__get_entity(self.get_identity())
         data[cls.key_field] = self.get_key()
 
         self.__load_from_data(data, is_stored=True)
+        self.__class__.__apply_attributes(self, attributes)
 
     def get_identity(self):
         raise NotImplementedError()
@@ -202,9 +204,17 @@ class Model(object):
         return cls(True, **data)
 
     @classmethod
+    def __apply_attributes(cls, obj, attributes):
+        obj.__index = attributes['modified_index']
+
+    @classmethod
     def get_and_build(cls, identity, key):
-        data = cls.__get_entity(identity)
-        return cls.__build_from_data(key, data)
+        (attributes, data) = cls.__get_entity(identity)
+
+        obj = cls.__build_from_data(key, data)
+        cls.__apply_attributes(obj, attributes)
+
+        return obj
 
     @classmethod
     def make_opaque(cls):
@@ -237,7 +247,7 @@ class Model(object):
                          (cls.entity_class, parent, identity))
 
     @classmethod
-    def __update_entity(cls, identity, data={}):
+    def __update_entity(cls, identity, data={}, check_index=False):
         identity = cls.__flatten_identity(identity)
         parent = (_ENTITY_ROOT, cls.entity_class)
 
@@ -245,7 +255,11 @@ class Model(object):
                       cls.entity_class, parent, identity)
 
         try:
-            cls.__update_only_encoded(parent, identity, data)
+            cls.__update_only_encoded(
+                parent, 
+                identity, 
+                data, 
+                check_index=check_index)
         except etcd.exceptions.EtcdPreconditionException:
             pass
         else:
@@ -280,7 +294,13 @@ class Model(object):
     def __get_encoded(cls, parent, identity):
         key = cls.__key_from_identity(parent, identity)
         response = _etcd.node.get(key)
-        return _decode(response.node.value)
+
+        return (
+            {
+                'modified_index': response.node.modified_index, 
+            },
+            _decode(response.node.value)
+        )
 
     @classmethod
     def __flatten_key(cls, key):
@@ -292,9 +312,18 @@ class Model(object):
 #        return _etcd.node.set(key, value)
 #
     @classmethod
-    def __update_only_encoded(cls, parent, identity, value):
+    def __update_only_encoded(cls, parent, identity, value, check_index=False):
         key = cls.__key_from_identity(parent, identity)
-        return _etcd.node.update_only(key, _encode(value))
+
+        # If check_index is set, make sure the node hasn't changed since we 
+        # read it.
+        current_index = self.__index if check_index is True else None
+
+        return _etcd.node.compare_and_swap(
+                    key, 
+                    value, 
+                    prev_exists=True, 
+                    current_index=current_index)
 
     @classmethod
     def __create_only_encoded(cls, parent, identity, value):
@@ -325,15 +354,6 @@ class Model(object):
             yield cls.__build_from_data(key, data)
 
     @classmethod
-    def __list_entities(cls, identity_prefix):
-        parent = (_ENTITY_ROOT, cls.entity_class)
-
-        _logger.debug("Getting children [%s] entities of parent [%s].", 
-                      cls.entity_class, parent)
-
-        return cls.__list_encoded(parent, identity_prefix)
-
-    @classmethod
     def __list_encoded(cls, parent, identity_prefix):
         key = cls.__key_from_identity(parent, identity_prefix)
 
@@ -344,6 +364,19 @@ class Model(object):
             # Don't just decode the data, but derive the identity for this 
             # child as well (clip the search-key path-prefix from the child-key).
             yield (child.key[len(key) + 1:], _decode(child.value))
+
+    @classmethod
+    def list_keys(cls, *args):
+# TODO(dustin): Currently, we have to receive the compete response from *etcd* 
+#               before we can operate on it. That response also includes 
+#               values, which we don't need at all right here. This needs to be 
+#               an improvement within *etcd*.
+        parent = (_ENTITY_ROOT, cls.entity_class)
+        key = cls.__key_from_identity(parent, args)
+
+        response = _etcd.node.get(key)
+        for child in response.node.children:
+            yield child.key[len(key) + 1:]
 
     @classmethod
     def __flatten_identity(cls, identity):
