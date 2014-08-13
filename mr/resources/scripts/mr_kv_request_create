@@ -11,7 +11,9 @@ import pprint
 import mr.config.log
 import mr.models.kv.workflow
 import mr.models.kv.job
+import mr.models.kv.step
 import mr.models.kv.request
+import mr.models.kv.invocation
 
 description = "Create a request entity"
 
@@ -29,11 +31,18 @@ args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 job = mr.models.kv.job.get(workflow, args.job_name)
+step = mr.models.kv.step.get(workflow, job.initial_step_name)
+
+i = mr.models.kv.invocation.Invocation(
+        step_name=step.step_name,
+        arguments=dict(args.argument))
+
+i.save()
 
 r = mr.models.kv.request.Request(
+        invocation_id=i.invocation_id,
         workflow=workflow, 
         job_name=job.job_name, 
-        arguments=dict(args.argument), 
         context=args.context)
 
 r.save()

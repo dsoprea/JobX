@@ -1,0 +1,46 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.step
+import mr.models.kv.handler
+import mr.models.kv.invocation
+
+description = "Create an invocation entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('step_name', help='Step name')
+
+parser.add_argument('-a', '--argument', 
+                    required=True, 
+                    action='append', 
+                    nargs=2, 
+                    help='Argument name and value')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+step = mr.models.kv.step.get(workflow, args.step_name)
+handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
+
+arguments_dict = dict(args.argument)
+handler.cast_arguments(arguments_dict)
+
+i = mr.models.kv.invocation.Invocation(
+        workflow=workflow, 
+        step_name=step.step_name, 
+        arguments=arguments_dict)
+
+i.save()
+
+pprint.pprint(i)

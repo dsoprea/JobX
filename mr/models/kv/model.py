@@ -3,22 +3,16 @@ import json
 import random
 import hashlib
 
-import etcd.client
 import etcd.exceptions
 
-import mr.config.etcd
+import mr.config.kv
+import mr.models.kv.common
+import mr.models.kv.data_layer
+import mr.compat
 
 logging.getLogger('etcd').setLevel(logging.INFO)
 
-_ENTITY_ROOT = 'entities'
-_REPR_DATA_TRUNCATE_WIDTH = 20
-
 _logger = logging.getLogger(__name__)
-
-_encode = lambda data: json.dumps(data)
-_decode = lambda encoded: json.loads(encoded)
-
-_etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
 
 class ValidationError(Exception):
@@ -28,8 +22,9 @@ class ValidationError(Exception):
 
 
 class Field(object):
-    def __init__(self, is_required=True):
+    def __init__(self, is_required=True, default_value=None):
         self.__is_required = is_required
+        self.__default_value = default_value
 
     def validate(self, name, value):
         """Raise ValidationError on error."""
@@ -37,11 +32,15 @@ class Field(object):
         pass
 
     def is_empty(self, value):
-        return not value
+        return value == self.default_value or not value
 
     @property
     def is_required(self):
         return self.__is_required
+
+    @property
+    def default_value(self):
+        return self.__default_value
 
 # We want to get everything using this as the default (not Field).
 TextField = Field
@@ -57,8 +56,10 @@ class EnumField(Field):
         if value not in self.__values:
             raise ValidationError(name, "Not a valid enum value.")
 
+_dl = mr.models.kv.data_layer.DataLayerKv()
 
-class Model(object):
+
+class Model(mr.models.kv.common.CommonKv):
     entity_class = None
     key_field = None
 
@@ -91,7 +92,7 @@ class Model(object):
         # Fill-in any missing fields.
 
         for field_name in (all_fields - actual_fields):
-            data[field_name] = None
+            data[field_name] = getattr(cls, field_name).default_value
 
         # Determine which fields had empty data.
 
@@ -118,9 +119,9 @@ class Model(object):
 
         truncated_data = {}
         for k, v in self.get_data().items():
-            if issubclass(v.__class__, (basestring, unicode)) is True and \
-               len(v) > _REPR_DATA_TRUNCATE_WIDTH:
-                v = v[:_REPR_DATA_TRUNCATE_WIDTH] + '...'
+            if issubclass(v.__class__, mr.compat.basestring) is True and \
+               len(v) > mr.config.kv.REPR_DATA_TRUNCATE_WIDTH:
+                v = v[:mr.config.kv.REPR_DATA_TRUNCATE_WIDTH] + '...'
 
             truncated_data[k] = v
 
@@ -159,7 +160,7 @@ class Model(object):
     def presave(self):
         pass
 
-    def save(self, check_index=False):
+    def save(self, enforce_pristine=False):
         cls = self.__class__
 
         self.presave()
@@ -170,7 +171,7 @@ class Model(object):
             cls.__update_entity(
                     identity, 
                     self.get_data(),
-                    check_index=check_index)
+                    enforce_pristine=enforce_pristine)
         else:
             cls.__create_entity(
                     identity, 
@@ -205,7 +206,7 @@ class Model(object):
 
     @classmethod
     def __apply_attributes(cls, obj, attributes):
-        obj.__index = attributes['modified_index']
+        obj.__state = attributes['state']
 
     @classmethod
     def get_and_build(cls, identity, key):
@@ -217,18 +218,9 @@ class Model(object):
         return obj
 
     @classmethod
-    def make_opaque(cls):
-        """Generate a unique ID string for the given type of identity."""
-
-        # Our ID scheme is to generate SHA1s. Since these are going to be
-        # unique, we'll just ignore entity_class.
-
-        return hashlib.sha1(str(random.random()).encode('ASCII')).hexdigest()
-
-    @classmethod
     def __create_entity(cls, identity, data={}):
-        identity = cls.__flatten_identity(identity)
-        parent = (_ENTITY_ROOT, cls.entity_class)
+#        identity = cls.flatten_identity(identity)
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Creating [%s] entity with parent [%s]: [%s]", 
                       cls.entity_class, parent, identity)
@@ -247,9 +239,9 @@ class Model(object):
                          (cls.entity_class, parent, identity))
 
     @classmethod
-    def __update_entity(cls, identity, data={}, check_index=False):
-        identity = cls.__flatten_identity(identity)
-        parent = (_ENTITY_ROOT, cls.entity_class)
+    def __update_entity(cls, identity, data={}, enforce_pristine=False):
+#        identity = cls.flatten_identity(identity)
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Updating [%s] entity with parent [%s]: [%s]", 
                       cls.entity_class, parent, identity)
@@ -259,7 +251,7 @@ class Model(object):
                 parent, 
                 identity, 
                 data, 
-                check_index=check_index)
+                enforce_pristine=enforce_pristine)
         except etcd.exceptions.EtcdPreconditionException:
             pass
         else:
@@ -273,8 +265,8 @@ class Model(object):
 
     @classmethod
     def __delete_entity(cls, identity):
-        identity = cls.__flatten_identity(identity)
-        parent = (_ENTITY_ROOT, cls.entity_class)
+#        identity = cls.flatten_identity(identity)
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Deleting [%s] entity with parent [%s]: [%s]", 
                       cls.entity_class, parent, identity)
@@ -283,7 +275,7 @@ class Model(object):
 
     @classmethod
     def __get_entity(cls, identity):
-        parent = (_ENTITY_ROOT, cls.entity_class)
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Getting [%s] entity with parent [%s]: [%s]", 
                       cls.entity_class, parent, identity)
@@ -292,60 +284,42 @@ class Model(object):
 
     @classmethod
     def __get_encoded(cls, parent, identity):
-        key = cls.__key_from_identity(parent, identity)
-        response = _etcd.node.get(key)
+        key = cls.key_from_identity(parent, identity)
+        
+        (state, value) = _dl.get(key)
 
         return (
             {
-                'modified_index': response.node.modified_index, 
+                'state': state, 
             },
-            _decode(response.node.value)
+            mr.config.kv.DECODER(value)
         )
 
     @classmethod
-    def __flatten_key(cls, key):
-        return '/' + '/'.join(key)
+    def __update_only_encoded(cls, parent, identity, value, 
+                              enforce_pristine=False):
+        key = cls.key_from_identity(parent, identity)
 
-#    @classmethod
-#    def set(cls, parent, identity, value):
-#        key = cls.__key_from_identity(parent, identity)
-#        return _etcd.node.set(key, value)
-#
-    @classmethod
-    def __update_only_encoded(cls, parent, identity, value, check_index=False):
-        key = cls.__key_from_identity(parent, identity)
+        state = self.__state if enforce_pristine is True else None
 
-        # If check_index is set, make sure the node hasn't changed since we 
-        # read it.
-        current_index = self.__index if check_index is True else None
-
-        return _etcd.node.compare_and_swap(
-                    key, 
-                    value, 
-                    prev_exists=True, 
-                    current_index=current_index)
+        return _dl.update_only(
+                key, 
+                mr.config.kv.ENCODER(value), 
+                check_against_state=state)
 
     @classmethod
     def __create_only_encoded(cls, parent, identity, value):
-        key = cls.__key_from_identity(parent, identity)
-        return _etcd.node.create_only(key, _encode(value))
+        key = cls.key_from_identity(parent, identity)
+        return _dl.create_only(key, mr.config.kv.ENCODER(value))
 
     @classmethod
     def __delete(cls, parent, identity):
-        key = cls.__key_from_identity(parent, identity)
-        return _etcd.node.delete(key)
-
-# TODO(dustin): We might be fine assuming implicit directory-creation, but 
-#               will have enough information to automate it if needed, later.
-#
-#    @classmethod
-#    def directory_create_only(cls, parent, name):
-#        return _etcd.directory.create_only(
-#                cls.__key_from_identity(parent, name))
+        key = cls.key_from_identity(parent, identity)
+        return _dl.delete(key)
 
     @classmethod
     def list(cls, *args):
-        parent = (_ENTITY_ROOT, cls.entity_class)
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Getting children [%s] entities of parent [%s].", 
                       cls.entity_class, parent)
@@ -355,61 +329,16 @@ class Model(object):
 
     @classmethod
     def __list_encoded(cls, parent, identity_prefix):
-        key = cls.__key_from_identity(parent, identity_prefix)
+        key = cls.key_from_identity(parent, identity_prefix)
 
-# TODO(dustin): We still need to confirm that we can get children without being 
-#               recursive. Update the documentation, either way.
-        response = _etcd.node.get(key)
-        for child in response.node.children:
+        for name, data in _dl.list(key):
             # Don't just decode the data, but derive the identity for this 
             # child as well (clip the search-key path-prefix from the child-key).
-            yield (child.key[len(key) + 1:], _decode(child.value))
+            yield (name, mr.config.kv.DECODER(data))
 
     @classmethod
-    def list_keys(cls, *args):
-# TODO(dustin): Currently, we have to receive the compete response from *etcd* 
-#               before we can operate on it. That response also includes 
-#               values, which we don't need at all right here. This needs to be 
-#               an improvement within *etcd*.
-        parent = (_ENTITY_ROOT, cls.entity_class)
-        key = cls.__key_from_identity(parent, args)
+    def list_children(cls, *args):
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
+        key = cls.key_from_identity(parent, args)
 
-        response = _etcd.node.get(key)
-        for child in response.node.children:
-            yield child.key[len(key) + 1:]
-
-    @classmethod
-    def __flatten_identity(cls, identity):
-        """Derive a key from the identity string. It can either be a flat 
-        string or a tuple of flat-strings. The latter will be collapsed to a
-        path name (for heirarchical storage). We may or may not do something
-        with hyphens in the future.
-        """
-
-        if issubclass(identity.__class__, tuple) is True:
-            for part in identity:
-                if '-' in part or \
-                   '/' in part:
-                    raise ValueError("Identity has reserved characters: [%s]" % 
-                                     (identity,))
-
-            return '/'.join(identity)
-        else:
-            if '-' in identity or \
-               '/' in identity:
-                raise ValueError("Identity has reserved characters: [%s]" % 
-                                 (identity,))
-
-            return identity
-
-    @classmethod
-    def __key_from_identity(cls, parent, identity):
-        if issubclass(identity.__class__, tuple) is False:
-            identity = (identity,)
-
-        flat_key = cls.__flatten_key(parent + identity)
-
-        _logger.debug("Flattened key: [%s] [%s] => [%s]", 
-                      parent, identity, flat_key)
-
-        return flat_key
+        return _dl.list_children(key)

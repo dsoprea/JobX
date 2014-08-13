@@ -6,15 +6,16 @@ import mr.models.kv.workflow
 
 # Step-types
 
-ST_MAP    = 'map'
-ST_REDUCE = 'reduce'
+#ST_MAP    = 'map'
+#ST_REDUCE = 'reduce'
+#
+#STEP_TYPES = (ST_MAP, ST_REDUCE)
 
-STEP_TYPES = (ST_MAP, ST_REDUCE)
-
-MAPREDUCE_HANDLERS_CLS = collections.namedtuple(
-                            'MapReducerHandlers',
-                            ['mapper_handler_name', 
-                             'reducer_handler_name'])
+# TODO(dustin): Still use/need this?
+#MAPREDUCE_HANDLERS_CLS = collections.namedtuple(
+#                            'MapReducerHandlers',
+#                            ['mapper_handler_name', 
+#                             'reducer_handler_name'])
 
 
 class Step(mr.models.kv.model.Model):
@@ -29,6 +30,10 @@ class Step(mr.models.kv.model.Model):
     # result immediately (ordinarily, additional steps will be yielded, and 
     # then coalesced later by a reduction step... in this case, the reducer
     # can be None)
+# TODO(dustin): We might consider storing a classification to be stored with 
+#               the handler-definitions, and forcing a suffix of "_map" and 
+#               "_reduce" (or just "_<classification>") to these handlers' 
+#               names.
     map_handler_name = mr.models.kv.model.Field()
     reduce_handler_name = mr.models.kv.model.Field(is_required=False)
 

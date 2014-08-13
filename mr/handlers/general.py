@@ -103,43 +103,37 @@ class Handlers(object):
         self.__compile_handlers()
 
     def __compile_handlers(self):
-        for name, version in self.__library.list_handlers():
+        for name, arg_names, version in self.__library.list_handlers():
             if name in self.__compiled:
                 continue
 
             _logger.info("Compiling handler: [%s]", name)
 
             hd = self.__library.get_handler(name)
-
-            # Split the code-body into lines.
-            code_lines = hd.source_code.replace('\r', '').split('\n')
-
-            self.__compiled[name] = self.__compile(code_lines)
+            self.__compiled[name] = self.__compile(arg_names, hd.source_code)
         else:
             _logger.warning("No code has to be recompiled, even though the "
                             "handlers were supposed to have changed.")
 
-    def __compile(self, code_lines):
-        """Compile the body of code (split into lines). We do this by wrapping 
-        it in another function, and then grabbing that function from scope. 
-        This way, it can actually return a value in the most natural way.
-        """
-
-        id_ = hashlib.sha1(random.random()).hexdigest()
-        code = "def " + id_ + "(args):\n" + \
-               "\n".join(('  ' + line) for line in code_lines) + "\n"
-
+    def __compile(self, arg_names, code):
+        name = "(lambda compile)"
+     
+        # Needs to start with a letter.
+        id_ = 'a' + hashlib.sha1(str(random.random())).hexdigest()
+        code = "def " + id_ + "(" + ', '.join(arg_names) + "):\n" + \
+               '\n'.join(('  ' + line) for line in code.replace('\r', '').split('\n')) + '\n'
+     
         c = compile(code, name, 'exec')
         locals_ = {}
-        exec(c, globals, locals_)
-
+        exec(c, globals(), locals_)
+     
         return locals_[id_]
 
-    def run_handler(self, name, arguments):
-#        locals_ = {}
-#        locals_.update(arguments)
-#        locals_.update(scope_references)
-#
-#        exec(self.__compiled[name], globals, locals_)
+    def run_handler(self, name, arguments_dict):
+        hd = self.__library.get_handler(name)
 
-        return self.__compiled[name](*arguments)
+        arguments_list = [value 
+                          for (name, value) 
+                          in hd.cast_arguments(arguments_dict)]
+
+        return self.__compiled[name](*arguments_list)

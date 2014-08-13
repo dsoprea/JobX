@@ -12,6 +12,7 @@ import select
 import mr.config.log
 import mr.models.kv.workflow
 import mr.models.kv.step
+import mr.models.kv.handler
 
 description = "Create a step entity"
 
@@ -20,40 +21,34 @@ parser = argparse.ArgumentParser(description=description)
 parser.add_argument('workflow_name', help='Workflow name')
 parser.add_argument('name', help='Name')
 parser.add_argument('description', help='Description')
-parser.add_argument('handler_name', help='Handler name')
-
-
-
-
-#parser.add_argument('code_type', help='Code language')
-#
-#parser.add_argument('-a', '--argument', 
-#                    required=True, 
-#                    action='append', 
-#                    nargs=2, 
-#                    help='Argument name and type (must be valid)')
+parser.add_argument('map_handler_name', help='Handler that receives arguments and does maps')
+parser.add_argument('reduce_handler_name', help='Handler that receives and reduces one or more results to a single result')
 
 args = parser.parse_args()
 
-#stdin_waiting = select.select([sys.stdin], [], [], 0)[0]
-#if not stdin_waiting:
-#    print("Please provide code via STDIN.")
-#    sys.exit(1)
-#
-#code_body = sys.stdin.read().strip()
-
 workflow = mr.models.kv.workflow.get(args.workflow_name)
+
+# TODO(dustin): We might want to check these against the actual library (but 
+#               maybe not). Give it some thought.
+try:
+    handler_map = mr.models.kv.handler.get(workflow, args.map_handler_name)
+except KeyError:
+    print("Map handler is invalid: [%s]" % (args.map_handler_name,))
+    sys.exit(1)
+
+try:
+    handler_reduce = mr.models.kv.handler.get(workflow, args.reduce_handler_name)
+except KeyError:
+    print("Reduce handler is invalid: [%s]" % (args.reduce_handler_name,))
+    sys.exit(2)
 
 s = mr.models.kv.step.Step(
         workflow=workflow, 
         step_name=args.name, 
         description=args.description, 
-        handler_name=args.handler_name,
-        step_type=mr.models.kv.step.ST_MAP)
+        map_handler_name=handler_map.handler_name,
+        reduce_handler_name=handler_reduce.handler_name)
 
 s.save()
-
-#        dict(args.argument), 
-#        (args.code_type, code_body))
 
 pprint.pprint(s)

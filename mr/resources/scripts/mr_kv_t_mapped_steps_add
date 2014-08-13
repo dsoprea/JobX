@@ -1,0 +1,33 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.invocation
+import mr.models.kv.trees.mapped_steps
+
+description = "Add a child to a mapped-steps entity tree"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('parent_invocation_id', help='Parent invocation ID')
+parser.add_argument('invocation_id', help='Invocation ID')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+parent_invocation = mr.models.kv.invocation.get(workflow, args.parent_invocation_id)
+invocation = mr.models.kv.invocation.get(workflow, args.invocation_id)
+
+ms = mr.models.kv.trees.mapped_steps.MappedStepsTree(workflow, parent_invocation)
+
+r = ms.add_child_entity(invocation)
+print(r)

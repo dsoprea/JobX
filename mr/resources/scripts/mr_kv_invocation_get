@@ -1,0 +1,27 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.invocation
+
+description = "Get an invocation entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('invocation_id', help='Invocation ID')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+i = mr.models.kv.invocation.get(workflow, args.invocation_id)
+
+pprint.pprint(i)

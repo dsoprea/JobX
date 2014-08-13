@@ -21,6 +21,7 @@ parser.add_argument('workflow_name', help='Workflow name')
 parser.add_argument('name', help='Name')
 parser.add_argument('description', help='Description')
 parser.add_argument('source_type', help='Source language')
+parser.add_argument('handler_type', help='Handler type')
 
 parser.add_argument('-a', '--argument', 
                     required=True, 
@@ -43,9 +44,10 @@ s = mr.models.kv.handler.Handler(
         workflow=workflow, 
         handler_name=args.name, 
         description=args.description,
-        argument_spec=dict(args.argument),
+        argument_spec=args.argument,
+        source_code=source_code,
         source_type=args.source_type,
-        source_code=source_code)
+        handler_type=args.handler_type)
 
 s.save()
 

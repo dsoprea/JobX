@@ -8,7 +8,7 @@ class Invocation(mr.models.kv.model.Model):
     key_field = 'invocation_id'
 
     invocation_id = mr.models.kv.model.Field()
-    parent_invocation_id = mr.models.kv.model.Field(is_required=False)
+    parent_invocation_id = mr.models.kv.model.Field(is_required=False, default_value='')
     step_name = mr.models.kv.model.Field()
 
     # For a mapping, this describes arguments. For a reduction or action step, 
@@ -35,14 +35,7 @@ class Invocation(mr.models.kv.model.Model):
         self.__workflow = workflow
 
     def get_identity(self):
-        effective_parent_invocation_id = self.parent_invocation_id \
-                                             if self.parent_invocation_id \
-                                             else 0
-
-        return (
-            self.__workflow.workflow_name, 
-            effective_parent_invocation_id,
-            self.invocation_id)
+        return (self.__workflow.workflow_name, self.invocation_id)
 
     def set_workflow(self, workflow):
         self.__workflow = workflow
@@ -54,10 +47,9 @@ class Invocation(mr.models.kv.model.Model):
 def get(workflow, invocation_id):
     m = Invocation.get_and_build(
             (workflow.workflow_name, 
-            invocation_id), 
+             invocation_id), 
             invocation_id)
 
     m.set_workflow(workflow)
 
     return m
-

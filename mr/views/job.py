@@ -42,7 +42,7 @@ def job_submit(workflow_name, job_name):
     step = mr.models.kv.step.get(workflow, job.initial_step_name)
     handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
 
-    required_argument_keys = set(handler.argument_spec.keys())
+    required_argument_keys = set(arg_info[0] for arg_info in handler.argument_spec)
 
     try:
         raw_arguments = _get_arguments_from_request(required_argument_keys)
@@ -56,7 +56,7 @@ def job_submit(workflow_name, job_name):
 
     invocation = mr.models.kv.invocation.Invocation(
                     step_name=step.step_name,
-                    arguments=arguments)
+                    arguments=dict(arguments))
 
     invocation.save()
 

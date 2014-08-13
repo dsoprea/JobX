@@ -31,7 +31,6 @@ def _queue_map_step_from_parameters(message_parameters):
 
     topic = 'mr.%s' + message_parameters.request.workflow_name
 
-# TODO(dustin): Make "mapper" a constant.
     self.__q.producer.push_one(topic, ST_MAP, message_parameters)
 
 
@@ -83,7 +82,7 @@ class _StepProcessor(object):
         _queue_map_step_from_parameters(next_parameters)
 
     def handle_map(self, message_handler, message_parameters):
-        """Corresponds to steps received with a type of ST_MAP."""
+        """Handle one dequeued map job."""
 
         request = message_parameters.request
         job = message_parameters.job
@@ -96,9 +95,14 @@ class _StepProcessor(object):
         handlers = managed_workflow.handlers
 
         try:
+            # Call the handler.
+            
             r = handlers.run_handler(
                     handler_name, 
                     message_parameters.arguments)
+
+            # Manage downstream steps that were mapped to (the handler was a 
+            # generator).
 
             if issubclass(r.__class__, types.GeneratorType) is True:
                 # The handler must first yield the number of steps that will be 
@@ -124,7 +128,11 @@ class _StepProcessor(object):
                 invocation.save()
 
                 i = 0
-                for (mapped_step, mapped_arguments) in steps:
+                for (mapped_step_name, mapped_arguments) in steps:
+                    mapped_step = mr.models.kv.step.get(
+                                    workflow, 
+                                    mapped_step_name)
+
                     self.__queue_next_step(
                         mapped_step, 
                         mapped_arguments, 
@@ -190,7 +198,7 @@ class _StepProcessor(object):
 
             try:
                 parent_invocation.mapped_waiting -= 1
-                parent_invocation.save(check_index=True)
+                parent_invocation.save(enforce_pristine=True)
             except etcd.exceptions.EtcdPreconditionException:
                 parent_invocation.refresh()
             else:
@@ -224,6 +232,7 @@ class _RequestReceiver(object):
         _queue_map_step_from_parameters(message_parameters)
 
     def __block_for_result(self, request):
+# TODO(dustin): Finish.
 # TODO(dustin): Come back to this once this is necessary.
         pass
 #        raise NotImplementedError()
