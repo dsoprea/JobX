@@ -32,7 +32,7 @@ class Field(object):
         pass
 
     def is_empty(self, value):
-        return value == self.default_value or not value
+        return value == self.default_value or value is None
 
     @property
     def is_required(self):
@@ -103,13 +103,15 @@ class Model(mr.models.kv.common.CommonKv):
                      in all_fields]
 
         for name, field_obj, datum in data_info:
-            if field_obj.is_required and field_obj.is_empty(datum):
-                raise ValidationError(name, "Required field is empty/omitted")
+            if field_obj.is_empty(datum):
+                if field_obj.is_required:
+                    raise ValidationError(name, "Required field is empty/omitted")
 
-            field_obj.validate(name, datum)
+                field_obj.validate(name, datum)
+            else:
+                datum = None
 
-        for k, v in data.items():
-            setattr(self, k, v)
+            setattr(self, name, datum)
 
         # Reflects whether or not the data came from storage.
         self.__is_stored = is_stored
@@ -145,12 +147,25 @@ class Model(mr.models.kv.common.CommonKv):
                 yield attr
 
     def get_data(self):
+        """Return a dictionary of data. If the value is considered to be
+        "empty" by the particular field-type, then coalesce it to whatever the 
+        default-value for each field-type is, e.g. both None and ''.
+        """
+
         cls = self.__class__
 
-        return dict([(k, getattr(self, k)) 
-                     for k 
-                     in self.__get_field_names()
-                     if k != cls.key_field])
+        data = []
+        for k in self.__get_field_names():
+            if k == cls.key_field:
+                continue
+
+            datum = getattr(self, k)
+            if getattr(cls, k).is_empty(datum) is True:
+                datum = default_value
+
+            data.append((k, datum))
+
+        return dict(data)
 
     def get_key(self):
         cls = self.__class__
@@ -159,6 +174,26 @@ class Model(mr.models.kv.common.CommonKv):
 
     def presave(self):
         pass
+
+    @classmethod
+    def atomic_update(cls, get_cb, set_cb, 
+                      max_attempts=\
+                        mr.config.kv.DEFAULT_ATOMIC_UPDATES_MAX_ATTEMPTS):
+        i = max_attempts
+        while > 0:
+            obj = get_cb()
+
+            try:
+                set_cb(obj)
+                obj.save(enforce_pristine=True)
+            except etcd.exceptions.EtcdPreconditionException:
+                obj.refresh()
+            else:
+                return obj
+
+            i -= 1
+
+        raise SystemError("Atomic update failed: %s" % (obj,))
 
     def save(self, enforce_pristine=False):
         cls = self.__class__
