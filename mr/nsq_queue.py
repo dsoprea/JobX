@@ -58,9 +58,8 @@ class _NsqProducerConsumer(
 
 class NsqQueueFactory(mr.queue.QueueFactory):
     def __init__(self):
-# TODO(dustin): For simplicity under lack of requirement, we only support one 
-#               topic and one channel right now. Once we get into it, we might
-#               get a clearer idea.
+# TODO(dustin): We need to subscribe to the "map" and "reduce" topics of the 
+#               current workflow.
         context_list = [(mr.config.nsq_queue.TOPIC, 
                          mr.config.nsq_queue.CHANNEL)]
 

@@ -1,6 +1,7 @@
 import mr.constants
 import mr.models.kv.model
 import mr.models.kv.workflow
+import mr.constants
 
 
 class Invocation(mr.models.kv.model.Model):
@@ -13,7 +14,7 @@ class Invocation(mr.models.kv.model.Model):
 
     # For a mapping, this describes arguments. For a reduction or action step, 
     # this describes a list of one item: the result.
-    arguments = mr.models.kv.model.Field()
+    arguments = mr.models.kv.model.Field(is_required=False)
 
     # The mapper will set this before it yields any downstream steps. Not set 
     # for other step-types.
@@ -29,6 +30,8 @@ class Invocation(mr.models.kv.model.Model):
 
     # Contains scalar exception traceback.
     error = mr.models.kv.model.Field(is_required=False)
+
+    direction = mr.models.kv.model.EnumField(mr.constants.DIRECTIONS)
 
     def __init__(self, workflow=None, *args, **kwargs):
         super(Invocation, self).__init__(self, *args, **kwargs)

@@ -10,4 +10,12 @@ ID_INVOCATION = 'invocation'
 # Code types.
 
 CODE_PYTHON = 'python'
+
 CODE_TYPES = (CODE_PYTHON,)
+
+# Flow direction (map/downstream, reduce/upstream).
+
+D_MAP = 'map'
+D_REDUCE = 'reduce'
+
+DIRECTIONS = (D_MAP, D_REDUCE)

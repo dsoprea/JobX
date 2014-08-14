@@ -89,24 +89,15 @@ class Tree(mr.models.kv.common.CommonKv):
         name = self.get_name_from_child_entity(entity)
         return self.update_child(name, meta)
 
-    def list_meta(self):
-        identity = self.__get_root_identity()
-        for name, encoded_meta in _dl.list(identity):
-            yield (name, mr.config.kv.DECODER(encoded_meta))
-
     def list_entities(self):
         identity = self.__get_root_identity()
-        for name in _dl.list_children(identity):
-            yield self.get_child_model_entity(name)
+        for name, encoded_meta in _dl.list(identity):
+            yield (self.get_child_model_entity(name), encoded_meta)
 
     def list(self):
         identity = self.__get_root_identity()
         for name, encoded_meta in _dl.list(identity):
-            yield (
-                name, 
-                mr.config.kv.DECODER(encoded_meta),
-                self.get_child_model_entity(name)
-            )
+            yield (name, mr.config.kv.DECODER(encoded_meta))
 
     def create(self):
         identity = self.__get_root_identity()

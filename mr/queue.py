@@ -2,7 +2,7 @@ import logging
 import pickle
 import collections
 import functools
-import gevent
+import threading
 
 import mr.config.queue
 import mr.models.kv.step
@@ -176,8 +176,9 @@ class MessageHandler(object):
         qmf = get_queue_message_funnel()
         message_parameters = qmf.inflate(format_version, decoded_data)
 
-# TODO(dustin): Is there a benefit to adding a pool here, for gevent?
-        gevent.spawn(handler, message_parameters)
+        t = threading.spawn(target=handler, args=(message_parameters,))
+# TODO(dustin): We'll need to join this after the step completes.
+        t.start()
 
     def handle_map(self, connection, message, context):
         """Corresponds to steps received with a type of ST_MAP."""
