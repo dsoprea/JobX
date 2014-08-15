@@ -2,7 +2,6 @@ import os
 
 import nsq.node_collection
 
-TOPIC = os.environ.get('MR_TOPIC', 'general_topic')
 CHANNEL = os.environ.get('MR_CHANNEL', 'general_worker')
 
 _LOOKUP_NODES = os.environ.get('MR_NSQLOOKUPD_HOSTS', '').split(',')

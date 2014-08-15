@@ -14,6 +14,7 @@ import atexit
 
 import mr.config
 import mr.config.log
+import mr.config.queue
 import mr.views.job
 import mr.views.index
 import mr.queue_manager
@@ -26,25 +27,28 @@ app.debug = mr.config.IS_DEBUG
 app.register_blueprint(mr.views.index.index_bp)
 app.register_blueprint(mr.views.job.job_bp)
 
-# Start the queue. 
 
-def _boot_queue():
-    mr.queue_manager.boot()
+def _init_queue(workflow_names):
+    def _boot_queue():
+        mr.queue_manager.boot(workflow_names)
 
-_boot_queue()
+    _boot_queue()
 
-def _stop_queue():
-    mr.queue_manager.stop()
+    def _stop_queue():
+        mr.queue_manager.stop()
 
-atexit.register(_stop_queue)
+    atexit.register(_stop_queue)
 
 # Register the workflows. This allows us to receive requests on them.
 
 def _init_workflows():
     wm = mr.workflow_manager.get_wm()
 
-# TODO(dustin): Load these from configuration.
-    w = mr.models.kv.workflow.get('dev')
-    wm.add(w)
+    workflow_names = os.environ['WORKFLOW_NAME_ENVIRONMENT_VARIABLE_NAME'].split(',')
+    for workflow_name in workflow_names:
+        w = mr.models.kv.workflow.get(workflow_name)
+        wm.add(w)
+
+    _init_queue(workflow_names)
 
 _init_workflows()

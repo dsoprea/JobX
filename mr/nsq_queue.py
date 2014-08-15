@@ -57,11 +57,10 @@ class _NsqProducerConsumer(
 
 
 class NsqQueueFactory(mr.queue.QueueFactory):
-    def __init__(self):
-# TODO(dustin): We need to subscribe to the "map" and "reduce" topics of the 
-#               current workflow.
-        context_list = [(mr.config.nsq_queue.TOPIC, 
-                         mr.config.nsq_queue.CHANNEL)]
+    def __init__(self, topics):
+        context_list = [(topic, mr.config.nsq_queue.CHANNEL) 
+                        for topic 
+                        in topics]
 
         self.__npc = _NsqProducerConsumer(
                         mr.config.nsq_queue.NODE_COLLECTION, 

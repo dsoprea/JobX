@@ -8,6 +8,7 @@ import gevent.pool
 
 import etcd.exceptions
 
+import mr.config.queue
 import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.handler
@@ -26,13 +27,14 @@ class _QueuePusher(object):
         self.__q = mr.queue_manager.get_queue()
 
     def queue_map_step_from_parameters(self, message_parameters):
-# TODO(dustin): We should move all of this logic into a general 'job control' 
-#               class that can be used for incoming requests as well as from 
-#               yields in the handlers.
-# TODO(dustin): We might increment the number of total steps processed on the 
+# TODO(dustin): We might increment a count of total steps processed on the 
 #               request.
 
-        topic = 'mr.%s.map' + message_parameters.request.workflow_name
+        replacements = {
+            'workflow_name': message_parameters.workflow.workflow_name,
+        }
+
+        topic = mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements
 
         self.__q.producer.push_one(
             topic, 
@@ -43,11 +45,11 @@ class _QueuePusher(object):
         return self.queue_map_step_from_parameters(message_parameters)
 
     def queue_reduce_step_from_parameters(self, message_parameters):
-# TODO(dustin): We should move all of this logic into a general 'job control' 
-#               class that can be used for incoming requests as well as from 
-#               yields in the handlers.
+        replacements = {
+            'workflow_name': message_parameters.workflow.workflow_name,
+        }
 
-        topic = 'mr.%s.reduce' + message_parameters.request.workflow_name
+        topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements
 
         self.__q.producer.push_one(
             topic, 
@@ -172,11 +174,11 @@ class _StepProcessor(object):
 #
 #        _qp.queue_reduce_step_from_parameters(reduce_parameters)
 
-    def __register_downstream_mappings(self, handler_name, handler_result_gen,
+    def __map_downstream(self, handler_name, handler_result_gen,
                                        workflow, invocation, 
                                        message_parameters):
-        """A mapping step has completed. Queue the downstream steps to be 
-        handled and tracked.
+        """A mapping step has completed and has mapped into one or more 
+        downstream steps. Queue the downstream steps to be handled and tracked.
         """
 
         # The handler must first yield the number of steps that will be
@@ -233,21 +235,19 @@ class _StepProcessor(object):
     def handle_map(self, message_handler, message_parameters):
         """Handle one dequeued map job."""
 
-        request = message_parameters.request
-        job = message_parameters.job
         step = message_parameters.step
         invocation = message_parameters.invocation
         managed_workflow = message_parameters.managed_workflow
         workflow = managed_workflow.workflow
-
-        handler_name = step.map_handler_name
         handlers = managed_workflow.handlers
+
+        _logger.debug("Processing MAP: %s", invocation)
 
         try:
             # Call the handler.
             
             handler_result = handlers.run_handler(
-                                handler_name, 
+                                step.map_handler_name, 
                                 message_parameters.arguments)
 
             # Manage downstream steps that were mapped to (the handler was a 
@@ -256,7 +256,7 @@ class _StepProcessor(object):
             if issubclass(
                handler_result.__class__, 
                types.GeneratorType) is True:
-                self.__register_downstream_mappings(
+                self.__map_downstream(
                     handler_name, 
                     handler_result,
                     workflow, 
@@ -282,7 +282,7 @@ class _StepProcessor(object):
                 # the job is done.
 
                 if invocation.parent_invocation_id is not None:
-                    parent_invocation = self.__decrement_map_parent_invocation(
+                    parent_invocation = self.__decrement_parent_invocation(
                                             invocation)
 
                     if parent_invocation.mapped_waiting <= 0:
@@ -303,7 +303,7 @@ class _StepProcessor(object):
 
             raise
 
-    def __decrement_map_parent_invocation(self, invocation):
+    def __decrement_parent_invocation(self, invocation):
         def get_cb():
             return mr.models.kv.invocation.get(
                     invocation.workflow, 
@@ -318,38 +318,68 @@ class _StepProcessor(object):
         """Corresponds to steps received with a type of mr.constants.D_REDUCE.
         """
 
-        mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                message_parameters.workflow, 
-                message_parameters.invocation.parent_invocation_id)
+        step = message_parameters.step
+        invocation = message_parameters.invocation
+        managed_workflow = message_parameters.managed_workflow
+        workflow = managed_workflow.workflow
+        handlers = managed_workflow.handlers
 
-        results_gen = mst.list_entities()
+        _logger.debug("Processing REDUCE: %s", invocation)
 
+        try:
+            # Call the handler.
 
-# 1. Create a generator that reads down the MappedStep tree.
-# 2. Call the reduction handler -with- the generator.
-#    * We might want to create the generator in whatever process/thread is 
-#      running the handler so that we can be configured to use multiprocessing 
-#      (we can pas a generator via IPC).
-# 3. Post the result.
-# 4. After it completes, create an invocation record for the parent.
+            mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
+                    workflow, 
+                    invocation.parent_invocation_id)
 
+            results_gen = mst.list_entities()
+
+            arguments = {
+                'results': results_gen,
+            }
+            
+            handler_result = handlers.run_handler(
+                                step.reduce_handler_name, 
+                                arguments)
+
+            # Post the result. This is where the failure will be if the result 
+            # isn't a primitive or, otherwise, not encodable.
+
+            mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
+                    workflow, 
+                    invocation.parent_invocation_id)
+
+            meta = {
+                'result': handler_result,
+            }
+
+            mst.update_child(invocation.invocation_id, meta=meta)
+
+            # Decrement the "waiting" counter on the parent, or notify that 
+            # the job is done.
+
+            if invocation.parent_invocation_id is not None:
+                parent_invocation = self.__decrement_parent_invocation(
+                                        invocation)
+
+                if parent_invocation.mapped_waiting <= 0:
+                    _qp.queue_initial_reduce_step_from_parameters(
+                        message_parameters, 
+                        parent_invocation)
+            else:
+# TODO(dustin): We don't have a parent, and just finished performing an action 
+#               (a non-mapping step). This was a request that was fulfilled 
+#               immediately. Flag the root invocation (or job?) as complete.
 # TODO(dustin): Finish.
+                raise NotImplementedError()
+        except:
+# TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
+# TODO(dustin): We might have to remove the chain of invocations, on error.
+            invocation.error = traceback.format_exc()
+            invocation.save()
 
-# TODO(dustin): We'll need to create an invocation record if/when we have to queue a reduction step.
-
-
-#                mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-#                        workflow, 
-#                        invocation.parent_invocation_id)
-#
-#                meta = {
-#                    'result': handler_result,
-#                }
-#
-#                mst.update_child(invocation.invocation_id, meta=meta)
-
-
-        raise NotImplementedError()
+            raise
 
 _sp = _StepProcessor()
 
