@@ -39,19 +39,28 @@ class _NsqProducerConsumer(
         self.__p = mr.queue.get_packager()
 
     def is_alive(self):
+# TODO(dustin): This isn't yet being implemented/facilitated.
         return self.__c.is_alive
 
     def start(self):
+        _logger.info("Starting NSQ.")
         self.__c.start()
 
     def stop(self):
+        _logger.info("Stopping NSQ.")
         self.__c.stop()
 
     def push_one_raw(self, topic, raw_message):
+        _logger.debug("Pushing message to topic: [%s]", topic)
+
         c = self.__c.connection_election.elect_connection()
         c.pub(topic, raw_message)
 
     def push_many_raw(self, topic, raw_message_list):
+        # We can't indicate -how many- messages there are if we were given a 
+        # generator.
+        _logger.debug("Pushing MANY messages to topic: [%s]", topic)
+
         c = self.__c.connection_election.elect_connection()
         c.mpub(topic, raw_message_list)
 

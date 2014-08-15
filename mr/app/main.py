@@ -27,8 +27,9 @@ app.debug = mr.config.IS_DEBUG
 app.register_blueprint(mr.views.index.index_bp)
 app.register_blueprint(mr.views.job.job_bp)
 
-
 def _init_queue(workflow_names):
+    """Start the queue. This is the circulatory system."""
+
     def _boot_queue():
         mr.queue_manager.boot(workflow_names)
 
@@ -39,9 +40,13 @@ def _init_queue(workflow_names):
 
     atexit.register(_stop_queue)
 
-# Register the workflows. This allows us to receive requests on them.
-
 def _init_workflows():
+    """Start the workflow(s). This is the skeleton.
+
+    A workflow is the pipeline, and is constituted of the jobs, steps, and 
+    handlers that will be chained to fulfill each request.
+    """
+
     wm = mr.workflow_manager.get_wm()
 
     workflow_names = os.environ['WORKFLOW_NAME_ENVIRONMENT_VARIABLE_NAME'].split(',')

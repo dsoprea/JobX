@@ -23,6 +23,9 @@ def _make_queue(workflow_names):
         topic.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements)
         topic.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements)
 
+    _logger.info("Generated topics from workflows:\nWorkflow(s):\n%s\n"
+                 "Topics:\n%s", workflow_names, topics)
+
     factory = queue_factory_cls(topics)
 
     return mr.queue.QUEUE_INSTANCE_CLS(
@@ -35,13 +38,13 @@ _q = None
 def boot(workflow_names):
     global _q
 
-    _logger.info("Booting queue.")
+    _logger.info("Booting/starting queue.")
 
     _q = _make_queue(workflow_names)
     _q.start()
 
 def stop():
-    _logger.info("Destroying queue.")
+    _logger.info("Stopping/destroying queue.")
 
     _q.stop()
 
