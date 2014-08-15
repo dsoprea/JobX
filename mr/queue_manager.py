@@ -20,11 +20,11 @@ def _make_queue(workflow_names):
             'workflow_name': workflow_name,
         }
 
-        topic.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements)
-        topic.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements)
+        topics.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements)
+        topics.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements)
 
-    _logger.info("Generated topics from workflows:\nWorkflow(s):\n%s\n"
-                 "Topics:\n%s", workflow_names, topics)
+    _logger.info("Generated topics from workflows:\nWorkflow(s): %s\n"
+                 "Topics: %s", workflow_names, topics)
 
     factory = queue_factory_cls(topics)
 
@@ -41,12 +41,12 @@ def boot(workflow_names):
     _logger.info("Booting/starting queue.")
 
     _q = _make_queue(workflow_names)
-    _q.start()
+    _q.consumer.start()
 
 def stop():
     _logger.info("Stopping/destroying queue.")
 
-    _q.stop()
+    _q.consumer.stop()
 
 def get_queue():
     return _q

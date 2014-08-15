@@ -1,12 +1,15 @@
 import logging
 
 import nsq.consumer
+import nsq.producer
 import nsq.node_collection
 import nsq.message_handler
 #import nsq.identify
 
 import mr.config.nsq_queue
 import mr.queue
+
+logging.getLogger('nsq').setLevel(logging.INFO)
 
 _logger = logging.getLogger(__name__)
 
@@ -36,19 +39,67 @@ class _NsqProducerConsumer(
                     max_in_flight, 
                     message_handler_cls=message_handler_cls)
 
-        self.__p = mr.queue.get_packager()
+        self.__p = nsq.producer.Producer(node_collection)
 
     def is_alive(self):
 # TODO(dustin): This isn't yet being implemented/facilitated.
         return self.__c.is_alive
 
+    def __start_producer(self):
+        _logger.info("Starting NSQ producer.")
+
+        try:
+            self.__p.start()
+        except:
+            _logger.exception("Could not start the queue producer.")
+        else:
+            return
+
+        raise SystemError("Could not start the queue producer.")
+
+    def __start_consumer(self):
+        _logger.info("Starting NSQ consumer.")
+
+        try:
+            self.__c.start()
+        except:
+            _logger.exception("Could not start the queue consumer.")
+        else:
+            return
+
+        raise SystemError("Could not start the queue consumer.")
+
     def start(self):
-        _logger.info("Starting NSQ.")
-        self.__c.start()
+        self.__start_producer()
+        self.__start_consumer()
+
+    def stop_producer(self):
+        _logger.info("Stopping NSQ producer.")
+
+        try:
+            self.__c.stop()
+        except:
+            _logger.exception("Could not stop the queue producer.")
+        else:
+            return
+
+        raise SystemError("Could not stop the queue producer.")
+
+    def stop_consumer(self):
+        _logger.info("Stopping NSQ consumer.")
+
+        try:
+            self.__c.stop()
+        except:
+            _logger.exception("Could not stop the queue consumer.")
+        else:
+            return
+
+        raise SystemError("Could not stop the queue consumer.")
 
     def stop(self):
-        _logger.info("Stopping NSQ.")
-        self.__c.stop()
+        self.__stop_consumer()
+        self.__stop_producer()
 
     def push_one_raw(self, topic, raw_message):
         _logger.debug("Pushing message to topic: [%s]", topic)

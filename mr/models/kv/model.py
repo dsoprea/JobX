@@ -96,20 +96,17 @@ class Model(mr.models.kv.common.CommonKv):
 
         # Determine which fields had empty data.
 
-        data_info = [(field, 
-                      getattr(self, field), 
-                      data[field]) 
-                     for field 
+        data_info = [(field_name, 
+                      getattr(cls, field_name), 
+                      data[field_name]) 
+                     for field_name 
                      in all_fields]
 
         for name, field_obj, datum in data_info:
-            if field_obj.is_empty(datum):
-                if field_obj.is_required:
-                    raise ValidationError(name, "Required field is empty/omitted")
-
+            if field_obj.is_empty(datum) is False:
                 field_obj.validate(name, datum)
-            else:
-                datum = None
+            elif field_obj.is_required:
+                raise ValidationError(name, "Required field is empty/omitted")
 
             setattr(self, name, datum)
 
@@ -160,8 +157,9 @@ class Model(mr.models.kv.common.CommonKv):
                 continue
 
             datum = getattr(self, k)
+            field_obj = getattr(cls, k)
             if getattr(cls, k).is_empty(datum) is True:
-                datum = default_value
+                datum = field_obj.default_value
 
             data.append((k, datum))
 
@@ -178,9 +176,9 @@ class Model(mr.models.kv.common.CommonKv):
     @classmethod
     def atomic_update(cls, get_cb, set_cb, 
                       max_attempts=\
-                        mr.config.kv.DEFAULT_ATOMIC_UPDATES_MAX_ATTEMPTS):
+                        mr.config.kv.DEFAULT_ATOMIC_UPDATE_MAX_ATTEMPTS):
         i = max_attempts
-        while > 0:
+        while i > 0:
             obj = get_cb()
 
             try:
@@ -225,8 +223,17 @@ class Model(mr.models.kv.common.CommonKv):
     def refresh(self):
         cls = self.__class__
 
-        (attributes, data) = cls.__get_entity(self.get_identity())
-        data[cls.key_field] = self.get_key()
+        identity = self.get_identity()
+        key = getattr(self, cls.key_field)
+
+        assert identity is not None
+        assert key is not None
+
+        _logger.debug("Refreshing entity with identity and key: [%s] [%s]", 
+                      identity, key)
+
+        (attributes, data) = cls.__get_entity(identity)
+        data[cls.key_field] = key
 
         self.__load_from_data(data, is_stored=True)
         self.__class__.__apply_attributes(self, attributes)

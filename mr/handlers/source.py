@@ -13,7 +13,7 @@ class SourceAdapter(object):
     """
 
     def list_handlers(self):
-        """Get a list of handlers' names and version-strings."""
+        """Get a list of (handler names, version-strings)."""
 
         raise NotImplementedError()
 

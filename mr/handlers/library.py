@@ -55,10 +55,10 @@ class KvLibraryAdapter(LibraryAdapter):
     def list_handlers(self):
         """Enumerate the handlers as (name, version)."""
 
-        for h in mr.models.kv.handler.Handler.list():
+        for h in mr.models.kv.handler.Handler.list(
+                    self.__workflow.workflow_name):
             yield (
                 h.handler_name, 
-                [arg_info[0] for arg_info in h.argument_spec], 
                 h.version
             )
 

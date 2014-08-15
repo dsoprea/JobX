@@ -9,7 +9,6 @@ import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.workflow_manager
 import mr.job_engine
-import mr.models.kv.queue
 import mr.shared_types
 
 _logger = logging.getLogger(__name__)

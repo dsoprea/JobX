@@ -52,6 +52,9 @@ def _init_workflows():
     workflow_names = os.environ['WORKFLOW_NAME_ENVIRONMENT_VARIABLE_NAME'].split(',')
     for workflow_name in workflow_names:
         w = mr.models.kv.workflow.get(workflow_name)
+
+        print("WORKFLOW: %s" % (w,))
+
         wm.add(w)
 
     _init_queue(workflow_names)

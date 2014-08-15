@@ -11,7 +11,6 @@ import mr.models.kv.job
 import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.utility
-import mr.queue_processor
 import mr.job_engine
 import mr.workflow_manager
 import mr.shared_types
@@ -26,18 +25,6 @@ _QUEUED_DATA_V1_CLS = collections.namedtuple(
                          'request_id', 
                          'step_name', 
                          'arguments'])
-
-# Queue data format versions.
-_QDF_1 = 1
-
-_QUEUE_FORMAT_CLS_MAP = {
-    _QDF_1: _QueueDataPackagerV1(),
-}
-
-# Set to the current format version.
-_CURRENT_QUEUE_FORMAT = _QDF_1
-
-_logger = logging.getLogger(__name__)
 
 
 class _QueueDataPackager(object):
@@ -55,12 +42,25 @@ class _QueueDataPackagerV1(_QueueDataPackager):
 #               structure beforehand.
 
     def encode(self, data):
-        assert issubclass(data.__class__, _QUEUED_DATA_V1_CLS) is True:
+        assert issubclass(data.__class__, _QUEUED_DATA_V1_CLS) is True
 
         return pickle.dumps(data)
 
     def decode(self, encoded_data):
         return pickle.loads(encoded_data)
+
+# Queue data format versions.
+_QDF_1 = 1
+
+_QUEUE_FORMAT_CLS_MAP = {
+    _QDF_1: _QueueDataPackagerV1(),
+}
+
+# Set to the current format version.
+_CURRENT_QUEUE_FORMAT = _QDF_1
+
+_logger = logging.getLogger(__name__)
+
 
 def _get_data_packager(format_version=_CURRENT_QUEUE_FORMAT):
     return _QUEUE_FORMAT_CLS_MAP[format_version]

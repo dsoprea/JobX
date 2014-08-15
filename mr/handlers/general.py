@@ -41,40 +41,46 @@ class Handlers(object):
     def __update_handlers(self):
         """Push all of the current handlers, and their state string."""
 
+        _logger.debug("Updating handlers.")
+
         # Determine whether the code has changed.
 
-        handler_state = self.__source.get_handlers_state()
+        source_state = self.__source.get_handlers_state()
+        library_state = self.__library.get_handlers_state()
 
-        if handler_state == self.__library.get_handlers_state():
+        _logger.debug("Handler states: SOURCE=[%s] LIBRARY=[%s]",
+                      source_state, library_state)
+
+        if source_state == library_state:
             _logger.debug("No update necessary.")
             return
 
         # The code HAS changed. Determine what has changed and how.
 
-        stored_handlers = self.__library.list_handlers()
-        stored_handler_versions = set(stored_handlers)
-        stored_handler_names = [n for (n, v) in stored_handlers]
+        stored_handlers = list(self.__library.list_handlers())
+        stored_handler_versions_s = set(stored_handlers)
+        stored_handler_names_s = set([n for (n, v) in stored_handlers])
 
         source_handlers = list(self.__source.list_handlers())
-        source_handler_versions = set(source_handlers)
-        source_handler_names = [n for (n, v) in source_handlers]
+        source_handler_versions_s = set(source_handlers)
+        source_handler_names_s = set([n for (n, v) in source_handlers])
 
-        delta_handlers = source_handler_versions - stored_handler_versions
-        delta_handler_names = set([name for (n, v) in delta_handlers])
+        delta_handlers_s = source_handler_versions_s - stored_handler_versions_s
+        delta_handler_names_s = set([name for (n, v) in delta_handlers_s])
 
-        new_handler_names = source_handler_names - stored_handler_names
-        deleted_handler_names = stored_handler_names - source_handler_names
-        updated_handler_names = delta_handler_names - new_handler_names
+        new_handler_names_s = source_handler_names_s - stored_handler_names_s
+        deleted_handler_names_s = stored_handler_names_s - source_handler_names_s
+        updated_handler_names_s = delta_handler_names_s - new_handler_names_s
 
         # Apply the changes.
 
         self.__library.set_handlers_state(handler_state)
 
         _logger.info("Updating handlers: NEW=(%d) UPDATED=(%d) DELETED=(%d)",
-                     new_handler_names, updated_handler_names,
-                     deleted_handler_names)
+                     len(new_handler_names_s), len(updated_handler_names_s),
+                     len(deleted_handler_names))
 
-        for new_handler_name in new_handler_names:
+        for new_handler_name in new_handler_names_s:
             try:
                 hd = self.__source.get_handler(new_handler_name)
             except HandlerFormatException:
@@ -84,7 +90,7 @@ class Handlers(object):
 
             self.__library.create_handler(hd)
 
-        for updated_handler_name in updated_handler_names:
+        for updated_handler_name in updated_handler_names_s:
             del self.__compiled[updated_handler_name]
 
             try:
@@ -96,7 +102,7 @@ class Handlers(object):
 
             self.__library.update_handler(hd)
 
-        for deleted_handler_name in deleted_handler_names:
+        for deleted_handler_name in deleted_handler_names_s:
             self.__library.delete_handler(deleted_handler_name)
             del self.__compiled[deleted_handler_name]
 
