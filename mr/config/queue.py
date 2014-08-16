@@ -5,6 +5,12 @@ QUEUE_FACTORY_FQ_CLASS = 'mr.nsq_queue.NsqQueueFactory'
 TOPIC_NAME_MAP_TEMPLATE = 'mr.%(workflow_name)s.map'
 TOPIC_NAME_REDUCE_TEMPLATE = 'mr.%(workflow_name)s.reduce'
 
-WORKFLOW_NAME_ENVIRONMENT_VARIABLE_NAME = 'MR_WORKFLOW_NAME'
+def get_current_workflows():
+    """Lazy-load the workflow name(s). this won't [probably] be necessary unless 
+    we're actually running job-processing, so we don't want to throw an error 
+    when we happen to be loaded under other functions.
+    """
 
-CONSUMER_ENABLED = bool(int(os.environ.get('MR_CONSUMER_ENABLED', '1')))
+    return os.environ['MR_WORKFLOW_NAMES'].split(',')
+
+CONSUMER_ENABLED = bool(int(os.environ.get('MR_CONSUME', '1')))

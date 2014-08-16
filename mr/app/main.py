@@ -48,8 +48,8 @@ def _init_workflows():
     """
 
     wm = mr.workflow_manager.get_wm()
+    workflow_names = mr.config.queue.get_current_workflows()
 
-    workflow_names = os.environ['WORKFLOW_NAME_ENVIRONMENT_VARIABLE_NAME'].split(',')
     for workflow_name in workflow_names:
         w = mr.models.kv.workflow.get(workflow_name)
 
