@@ -73,7 +73,7 @@ class _QueuePusher(object):
         reduce_invocation.save()
 
         reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-            managed_workflow=message_parameters.managed_workflow,
+            workflow=message_parameters.workflow,
             invocation=reduce_invocation,
             request=message_parameters.request,
             job=message_parameters.job,
@@ -83,8 +83,14 @@ class _QueuePusher(object):
 
         return self.queue_reduce_step_from_parameters(reduce_parameters)
 
-_qp = _QueuePusher()
+_pusher = None
+def _get_pusher():
+    global _pusher
 
+    if _pusher is None:
+        _pusher = _QueuePusher()
+
+    return _pusher
 
 class _StepProcessor(object):
     """Receives queued items to be processed. We are running in our own gthread 
@@ -94,8 +100,7 @@ class _StepProcessor(object):
     def __queue_map_step(self, mapped_steps_tree, next_step, next_arguments, 
                          original_parameters):
         request = original_parameters.request
-        managed_workflow = original_parameters.managed_workflow
-        workflow = managed_workflow.workflow
+        workflow = original_parameters.workflow
         job = original_parameters.job
         invocation = original_parameters.invocation
 
@@ -124,7 +129,7 @@ class _StepProcessor(object):
         mapped_steps_tree.add_child(mapped_invocation.invocation_id)
 
         mapped_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-            managed_workflow=managed_workflow,
+            workflow=workflow,
             invocation=mapped_invocation,
             request=request,
             job=job,
@@ -132,12 +137,11 @@ class _StepProcessor(object):
             handler=next_handler,
             arguments=next_arguments)
 
-        _qp.queue_map_step_from_parameters(mapped_parameters)
+        _get_pusher().queue_map_step_from_parameters(mapped_parameters)
 
 #    def __queue_reduce_step(self, next_step, next_arguments, original_parameters):
 #        request = original_parameters.request
-#        managed_workflow = original_parameters.managed_workflow
-#        workflow = managed_workflow.workflow
+#        workflow = original_parameters.workflow
 #        job = original_parameters.job
 #        invocation = original_parameters.invocation
 #
@@ -164,7 +168,7 @@ class _StepProcessor(object):
 #                      invocation, mapped_invocation)
 #
 #        reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-#            managed_workflow=managed_workflow,
+#            workflow=workflow,
 #            invocation=mapped_invocation,
 #            request=request,
 #            job=job,
@@ -172,7 +176,7 @@ class _StepProcessor(object):
 #            handler=next_handler,
 #            arguments=next_arguments)
 #
-#        _qp.queue_reduce_step_from_parameters(reduce_parameters)
+#        _get_pusher().queue_reduce_step_from_parameters(reduce_parameters)
 
     def __map_downstream(self, handler_name, handler_result_gen,
                                        workflow, invocation, 
@@ -237,8 +241,9 @@ class _StepProcessor(object):
 
         step = message_parameters.step
         invocation = message_parameters.invocation
-        managed_workflow = message_parameters.managed_workflow
-        workflow = managed_workflow.workflow
+        workflow = message_parameters.workflow
+        
+        managed_workflow = mr.workflow_manager.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
 
         _logger.debug("Processing MAP: %s", invocation)
@@ -286,7 +291,8 @@ class _StepProcessor(object):
                                             invocation)
 
                     if parent_invocation.mapped_waiting <= 0:
-                        _qp.queue_initial_reduce_step_from_parameters(
+                        pusher = _get_pusher()
+                        pusher.queue_initial_reduce_step_from_parameters(
                             message_parameters, 
                             parent_invocation)
                 else:
@@ -320,8 +326,9 @@ class _StepProcessor(object):
 
         step = message_parameters.step
         invocation = message_parameters.invocation
-        managed_workflow = message_parameters.managed_workflow
-        workflow = managed_workflow.workflow
+        workflow = message_parameters.workflow
+
+        managed_workflow = mr.workflow_manager.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
 
         _logger.debug("Processing REDUCE: %s", invocation)
@@ -364,7 +371,7 @@ class _StepProcessor(object):
                                         invocation)
 
                 if parent_invocation.mapped_waiting <= 0:
-                    _qp.queue_initial_reduce_step_from_parameters(
+                    _get_pusher().queue_initial_reduce_step_from_parameters(
                         message_parameters, 
                         parent_invocation)
             else:
@@ -395,21 +402,29 @@ class _RequestReceiver(object):
         self.__wm = mr.workflow_manager.get_wm()
 
     def __push_request(self, message_parameters):
-        _qp.queue_initial_map_step_from_parameters(message_parameters)
+        pusher = _get_pusher()
+        pusher.queue_initial_map_step_from_parameters(message_parameters)
 
-    def __block_for_result(self, request):
+    def __block_for_result(self, message_parameters):
 # TODO(dustin): Finish.
 # TODO(dustin): Come back to this once this is necessary.
-        pass
-#        raise NotImplementedError()
 
-    def process_request(self, request):
-        self.__push_request(request)
-        r = self.__block_for_result(request)
+        return { 
+            'request_id': message_parameters.request.request_id,
+            'placeholder': '(should block for result)',
+        }
+
+    def process_request(self, message_parameters):
+        self.__push_request(message_parameters)
+        r = self.__block_for_result(message_parameters)
 
         return r
 
-_rr = _RequestReceiver()
-
+_request_receiver = None
 def get_request_receiver():
-    return _rr
+    global _request_receiver
+
+    if _request_receiver is None:
+        _request_receiver = _RequestReceiver()
+
+    return _request_receiver

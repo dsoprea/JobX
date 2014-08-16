@@ -2,7 +2,7 @@ import collections
 
 QUEUE_MESSAGE_PARAMETERS_CLS = collections.namedtuple(
                                     'InflatedModels', 
-                                    ['managed_workflow', 
+                                    ['workflow', 
                                      'invocation',
                                      'request', 
                                      'job', 

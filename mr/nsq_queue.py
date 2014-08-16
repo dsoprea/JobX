@@ -94,7 +94,7 @@ class _NsqQueueProducer(mr.queue.QueueProducer):
     def push_one_raw(self, topic, raw_message):
         _logger.debug("Pushing message to topic: [%s]", topic)
 
-        c = self.__c.connection_election.elect_connection()
+        c = self.__p.connection_election.elect_connection()
         c.pub(topic, raw_message)
 
     def push_many_raw(self, topic, raw_message_list):
@@ -102,7 +102,7 @@ class _NsqQueueProducer(mr.queue.QueueProducer):
         # generator.
         _logger.debug("Pushing MANY messages to topic: [%s]", topic)
 
-        c = self.__c.connection_election.elect_connection()
+        c = self.__p.connection_election.elect_connection()
         c.mpub(topic, raw_message_list)
 
 

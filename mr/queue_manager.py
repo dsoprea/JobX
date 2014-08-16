@@ -7,7 +7,8 @@ import mr.queue
 _logger = logging.getLogger(__name__)
 
 def _make_queue(workflow_names):
-    _logger.info("Starting queue consumer: %s", workflow_names)
+    _logger.info("Creating queue interfaces for workflow(s): %s", 
+                 workflow_names)
 
     queue_factory_cls = mr.utility.load_cls_from_string(
                             mr.config.queue.QUEUE_FACTORY_FQ_CLASS)
@@ -55,10 +56,12 @@ def stop():
     _q.control.stop_producer()
 
     if mr.config.queue.CONSUMER_ENABLED is True:
-        _logger.info("Stopping queue.")
+        _logger.info("Stopping queue consumer.")
         _q.control.stop_consumer()
     else:
         _logger.warning("Queue")
 
 def get_queue():
+    assert _q is not None
+
     return _q

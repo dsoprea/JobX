@@ -21,6 +21,8 @@ job_bp = flask.Blueprint(
 def _get_arguments_from_request():
     request_data = flask.request.get_json()
 
+    _logger.debug("Job data:\n%s", request_data)
+
     if request_data is None:
         raise ValueError("No arguments given (1)")
 
@@ -41,11 +43,13 @@ def job_submit(workflow_name, job_name):
     step = mr.models.kv.step.get(workflow, job.initial_step_name)
     handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
 
-    required_argument_keys = set(arg_info[0] for arg_info in handler.argument_spec)
-
     try:
-        raw_arguments = _get_arguments_from_request(required_argument_keys)
-        arguments = handler.cast_arguments(raw_arguments)
+        raw_arguments = _get_arguments_from_request()
+        
+        # Make sure that we don't get a generator. We render generators on 
+        # principle, but they don't work so well with persistence.
+# TODO(dustin): Created a serializable generator container for the arguments.
+        arguments = dict(handler.cast_arguments(raw_arguments))
     except mr.models.kv.handler.ArgumentMarshalError as e:
         return (str(e), 406)
 
@@ -54,20 +58,25 @@ def job_submit(workflow_name, job_name):
     }
 
     invocation = mr.models.kv.invocation.Invocation(
+                    workflow=workflow,
                     step_name=step.step_name,
-                    arguments=dict(arguments))
+                    arguments=dict(arguments),
+                    direction=mr.constants.D_MAP)
 
     invocation.save()
 
     request = mr.models.kv.request.Request(
+                workflow=workflow,
                 job_name=job.job_name, 
                 invocation_id=invocation.invocation_id,
                 context=context)
 
     request.save()
 
+    _logger.debug("Received request: [%s]", request)
+
     message_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-                            managed_workflow=managed_workflow,
+                            workflow=workflow,
                             invocation=invocation,
                             request=request,
                             job=job, 

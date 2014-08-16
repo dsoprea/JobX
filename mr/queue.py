@@ -19,12 +19,14 @@ QUEUE_INSTANCE_CLS = collections.namedtuple(
                         'QueueInstance', 
                         ['consumer', 'producer', 'control'])
 
-_QUEUED_DATA_V1_CLS = collections.namedtuple(
-                        'QueueMessageV1', 
-                        ['workflow_name',
-                         'request_id', 
-                         'step_name', 
-                         'arguments'])
+
+# We have to have a symbol that matches the alleged name in order to pickle.
+QueueMessageV1 = collections.namedtuple(
+                    'QueueMessageV1', 
+                    ['workflow_name',
+                     'request_id', 
+                     'step_name', 
+                     'arguments'])
 
 
 class _QueueDataPackager(object):
@@ -42,7 +44,7 @@ class _QueueDataPackagerV1(_QueueDataPackager):
 #               structure beforehand.
 
     def encode(self, data):
-        assert issubclass(data.__class__, _QUEUED_DATA_V1_CLS) is True
+        assert issubclass(data.__class__, QueueMessageV1) is True
 
         return pickle.dumps(data)
 
@@ -109,13 +111,14 @@ class _QueueMessageFunnel(object):
                 message_parameters.__class__, 
                 mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS) is True
 
-        workflow = message_parameters.managed_workflow.workflow
+        workflow = message_parameters.workflow
 
-        return _QUEUED_DATA_V1_CLS(
+        # This implements whatever the current message format is.
+        return QueueMessageV1(
                 workflow_name=workflow.workflow_name,
                 request_id=message_parameters.request.request_id,
                 step_name=message_parameters.step.step_name,
-                arguments=message_parameters.arguments)
+                arguments=dict(message_parameters.arguments))
 
     def inflate(self, format_version, deflated):
         """Reconstruct the battery of models and arguments that describes the 
@@ -142,7 +145,7 @@ class _QueueMessageFunnel(object):
                              (format_version,))
 
         return mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-                managed_workflow=managed_workflow,
+                workflow=workflow,
                 invocation=invocation,
                 request=request,
                 job=job,
