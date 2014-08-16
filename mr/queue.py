@@ -194,10 +194,16 @@ class MessageHandler(object):
 
 
 class QueueControl(object):
-    def start(self):
+    def start_consumer(self):
         raise NotImplementedError()
 
-    def stop(self):
+    def start_producer(self):
+        raise NotImplementedError()
+
+    def stop_consumer(self):
+        raise NotImplementedError()
+
+    def stop_producer(self):
         raise NotImplementedError()
 
 

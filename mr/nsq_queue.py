@@ -21,31 +21,16 @@ class NsqMessageHandler(
     pass
 
 
-class _NsqProducerConsumer(
-        mr.queue.QueueProducer, 
-        mr.queue.QueueConsumer, 
-        mr.queue.QueueControl):
-    """Interface with NSQ queue, and provides all of the interfaces."""
+class _NsqQueueControl(mr.queue.QueueControl):
+    """Control interface to the NSQ queue."""
 
-    def __init__(self, node_collection, context_list, message_handler_cls, 
-                 max_in_flight):
-        super(mr.queue.QueueProducer, self).__init__()
-        super(mr.queue.QueueConsumer, self).__init__()
+    def __init__(self, producer, consumer):
         super(mr.queue.QueueControl, self).__init__()
 
-        self.__c = nsq.consumer.Consumer(
-                    context_list,
-                    node_collection, 
-                    max_in_flight, 
-                    message_handler_cls=message_handler_cls)
+        self.__p = producer
+        self.__c = consumer
 
-        self.__p = nsq.producer.Producer(node_collection)
-
-    def is_alive(self):
-# TODO(dustin): This isn't yet being implemented/facilitated.
-        return self.__c.is_alive
-
-    def __start_producer(self):
+    def start_producer(self):
         _logger.info("Starting NSQ producer.")
 
         try:
@@ -57,7 +42,7 @@ class _NsqProducerConsumer(
 
         raise SystemError("Could not start the queue producer.")
 
-    def __start_consumer(self):
+    def start_consumer(self):
         _logger.info("Starting NSQ consumer.")
 
         try:
@@ -68,10 +53,6 @@ class _NsqProducerConsumer(
             return
 
         raise SystemError("Could not start the queue consumer.")
-
-    def start(self):
-        self.__start_producer()
-        self.__start_consumer()
 
     def stop_producer(self):
         _logger.info("Stopping NSQ producer.")
@@ -97,9 +78,18 @@ class _NsqProducerConsumer(
 
         raise SystemError("Could not stop the queue consumer.")
 
-    def stop(self):
-        self.__stop_consumer()
-        self.__stop_producer()
+
+class _NsqQueueProducer(mr.queue.QueueProducer):
+    """Producer interface to the NSQ queue."""
+
+    def __init__(self, producer):
+        super(mr.queue.QueueProducer, self).__init__()
+
+        self.__p = producer
+
+    def is_alive(self):
+# TODO(dustin): This isn't yet being implemented/facilitated.
+        return self.__p.is_alive
 
     def push_one_raw(self, topic, raw_message):
         _logger.debug("Pushing message to topic: [%s]", topic)
@@ -116,23 +106,44 @@ class _NsqProducerConsumer(
         c.mpub(topic, raw_message_list)
 
 
+class _NsqQueueConsumer(mr.queue.QueueConsumer):
+    """Consumer interface to the NSQ queue."""
+
+    def __init__(self, consumer):
+        super(mr.queue.QueueConsumer, self).__init__()
+
+        self.__c = consumer
+
+    def is_alive(self):
+# TODO(dustin): This isn't yet being implemented/facilitated.
+        return self.__c.is_alive
+
+
 class NsqQueueFactory(mr.queue.QueueFactory):
     def __init__(self, topics):
+        node_collection = mr.config.nsq_queue.NODE_COLLECTION
+
+        p = nsq.producer.Producer(node_collection)
+
         context_list = [(topic, mr.config.nsq_queue.CHANNEL) 
                         for topic 
                         in topics]
 
-        self.__npc = _NsqProducerConsumer(
-                        mr.config.nsq_queue.NODE_COLLECTION, 
-                        context_list,
-                        NsqMessageHandler,
-                        mr.config.nsq_queue.MAX_IN_FLIGHT)
+        c = nsq.consumer.Consumer(
+                context_list,
+                node_collection, 
+                mr.config.nsq_queue.MAX_IN_FLIGHT, 
+                message_handler_cls=NsqMessageHandler)
 
-    def get_consumer(self):
-        return self.__npc
-
-    def get_producer(self):
-        return self.__npc
+        self.__control = _NsqQueueControl(p, c)
+        self.__producer = _NsqQueueProducer(p)
+        self.__consumer = _NsqQueueConsumer(c)
 
     def get_control(self):
-        return self.__npc
+        return self.__control
+
+    def get_producer(self):
+        return self.__producer
+
+    def get_consumer(self):
+        return self.__consumer

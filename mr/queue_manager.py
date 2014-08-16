@@ -38,15 +38,27 @@ _q = None
 def boot(workflow_names):
     global _q
 
-    _logger.info("Booting/starting queue.")
-
     _q = _make_queue(workflow_names)
-    _q.control.start()
+
+    _logger.info("Starting queue producer.")
+    _q.control.start_producer()
+
+    if mr.config.queue.CONSUMER_ENABLED is True:
+        _logger.info("Starting queue consumer.")
+        _q.control.start_consumer()
+    else:
+        _logger.warning("Queue consumption is disabled. Incoming requests "
+                        "will be queued but not processed.")
 
 def stop():
-    _logger.info("Stopping/destroying queue.")
+    _logger.info("Stopping queue producer.")
+    _q.control.stop_producer()
 
-    _q.control.stop()
+    if mr.config.queue.CONSUMER_ENABLED is True:
+        _logger.info("Stopping queue.")
+        _q.control.stop_consumer()
+    else:
+        _logger.warning("Queue")
 
 def get_queue():
     return _q
