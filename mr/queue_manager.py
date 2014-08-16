@@ -41,12 +41,12 @@ def boot(workflow_names):
     _logger.info("Booting/starting queue.")
 
     _q = _make_queue(workflow_names)
-    _q.consumer.start()
+    _q.control.start()
 
 def stop():
     _logger.info("Stopping/destroying queue.")
 
-    _q.consumer.stop()
+    _q.control.stop()
 
 def get_queue():
     return _q
