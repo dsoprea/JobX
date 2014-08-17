@@ -1,6 +1,17 @@
 import os
+import logging
 
-QUEUE_FACTORY_FQ_CLASS = 'mr.queue.nsq_queue.NsqQueueFactory'
+_logger = logging.getLogger(__name__)
+
+_USE_FAKE_QUEUE = bool(int(os.environ.get('MR_USE_FAKE_QUEUE', '0')))
+
+if _USE_FAKE_QUEUE is True:
+    _logger.warning("'Fake' queue elected.")
+    QUEUE_FACTORY_FQ_CLASS = 'mr.queue.backends.fake_queue.FakeQueueFactory'
+else:
+    QUEUE_FACTORY_FQ_CLASS = 'mr.queue.backends.nsq_queue.NsqQueueFactory'
+
+IS_MULTITHREADED = bool(int(os.environ.get('MR_MULTITHREADED', '1')))
 
 TOPIC_NAME_MAP_TEMPLATE = 'mr.%(workflow_name)s.map'
 TOPIC_NAME_REDUCE_TEMPLATE = 'mr.%(workflow_name)s.reduce'

@@ -391,7 +391,7 @@ class _StepProcessor(object):
 _sp = _StepProcessor()
 
 def get_step_processor():
-    return _jd
+    return _sp
 
 
 class _RequestReceiver(object):

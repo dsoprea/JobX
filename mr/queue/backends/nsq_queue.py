@@ -29,7 +29,7 @@ class _NsqQueueControl(mr.queue.queue_control.QueueControl):
     """Control interface to the NSQ queue."""
 
     def __init__(self, producer, consumer):
-        super(mr.queue.queue_control.QueueControl, self).__init__()
+        super(_NsqQueueControl, self).__init__()
 
         self.__p = producer
         self.__c = consumer
@@ -38,7 +38,7 @@ class _NsqQueueControl(mr.queue.queue_control.QueueControl):
         _logger.info("Starting NSQ producer.")
 
         try:
-            self.__p.start()
+            self.__p.resource.start()
         except:
             _logger.exception("Could not start the queue producer.")
         else:
@@ -50,7 +50,7 @@ class _NsqQueueControl(mr.queue.queue_control.QueueControl):
         _logger.info("Starting NSQ consumer.")
 
         try:
-            self.__c.start()
+            self.__c.resource.start()
         except:
             _logger.exception("Could not start the queue consumer.")
         else:
@@ -62,7 +62,7 @@ class _NsqQueueControl(mr.queue.queue_control.QueueControl):
         _logger.info("Stopping NSQ producer.")
 
         try:
-            self.__c.stop()
+            self.__c.resource.stop()
         except:
             _logger.exception("Could not stop the queue producer.")
         else:
@@ -74,7 +74,7 @@ class _NsqQueueControl(mr.queue.queue_control.QueueControl):
         _logger.info("Stopping NSQ consumer.")
 
         try:
-            self.__c.stop()
+            self.__c.resource.stop()
         except:
             _logger.exception("Could not stop the queue consumer.")
         else:
@@ -86,10 +86,12 @@ class _NsqQueueControl(mr.queue.queue_control.QueueControl):
 class _NsqQueueProducer(mr.queue.queue_producer.QueueProducer):
     """Producer interface to the NSQ queue."""
 
-    def __init__(self, producer):
-        super(mr.queue.queue_producer.QueueProducer, self).__init__()
+    def __init__(self):
+        super(_NsqQueueProducer, self).__init__()
 
-        self.__p = producer
+        node_collection = mr.config.nsq_queue.NODE_COLLECTION
+
+        self.__p = nsq.producer.Producer(node_collection)
 
     def is_alive(self):
 # TODO(dustin): This isn't yet being implemented/facilitated.
@@ -109,39 +111,44 @@ class _NsqQueueProducer(mr.queue.queue_producer.QueueProducer):
         c = self.__p.connection_election.elect_connection()
         c.mpub(topic, raw_message_list)
 
+    @property
+    def resource(self):
+        return self.__p
+
 
 class _NsqQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
     """Consumer interface to the NSQ queue."""
 
-    def __init__(self, consumer):
-        super(mr.queue.queue_consumer.QueueConsumer, self).__init__()
-
-        self.__c = consumer
-
-    def is_alive(self):
-# TODO(dustin): This isn't yet being implemented/facilitated.
-        return self.__c.is_alive
-
-
-class NsqQueueFactory(mr.queue.queue_factory.QueueFactory):
     def __init__(self, topics):
-        node_collection = mr.config.nsq_queue.NODE_COLLECTION
+        super(_NsqQueueConsumer, self).__init__()
 
-        p = nsq.producer.Producer(node_collection)
+        node_collection = mr.config.nsq_queue.NODE_COLLECTION
 
         context_list = [(topic, mr.config.nsq_queue.CHANNEL) 
                         for topic 
                         in topics]
 
-        c = nsq.consumer.Consumer(
+        self.__c = nsq.consumer.Consumer(
                 context_list,
                 node_collection, 
                 mr.config.nsq_queue.MAX_IN_FLIGHT, 
                 message_handler_cls=NsqMessageHandler)
 
-        self.__control = _NsqQueueControl(p, c)
-        self.__producer = _NsqQueueProducer(p)
-        self.__consumer = _NsqQueueConsumer(c)
+    def is_alive(self):
+# TODO(dustin): This isn't yet being implemented/facilitated.
+        return self.__c.is_alive
+
+    @property
+    def resource(self):
+        return self.__c
+
+
+class NsqQueueFactory(mr.queue.queue_factory.QueueFactory):
+    def __init__(self, topics):
+        self.__producer = _NsqQueueProducer()
+        self.__consumer = _NsqQueueConsumer(topics)
+
+        self.__control = _NsqQueueControl(self.__producer, self.__consumer)
 
     def get_control(self):
         return self.__control

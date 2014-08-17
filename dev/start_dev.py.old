@@ -6,6 +6,8 @@ dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, dev_path)
 
 os.environ['DEBUG'] = '1'
+os.environ['MR_WORKFLOW_NAMES'] = 'dev'
+os.environ['MR_USE_FAKE_QUEUE'] = '1'
 
 import logging
 
