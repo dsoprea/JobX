@@ -17,7 +17,7 @@ import mr.config.log
 import mr.config.queue
 import mr.views.job
 import mr.views.index
-import mr.queue_manager
+import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.models.kv.workflow
 
@@ -31,12 +31,12 @@ def _init_queue(workflow_names):
     """Start the queue. This is the circulatory system."""
 
     def _boot_queue():
-        mr.queue_manager.boot(workflow_names)
+        mr.queue.queue_manager.boot(workflow_names)
 
     _boot_queue()
 
     def _stop_queue():
-        mr.queue_manager.stop()
+        mr.queue.queue_manager.stop()
 
     atexit.register(_stop_queue)
 

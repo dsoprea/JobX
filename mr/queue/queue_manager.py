@@ -2,7 +2,8 @@ import logging
 
 import mr.config.queue
 import mr.utility
-import mr.queue
+import mr.queue.queue_factory
+import mr.queue.types
 
 _logger = logging.getLogger(__name__)
 
@@ -13,7 +14,9 @@ def _make_queue(workflow_names):
     queue_factory_cls = mr.utility.load_cls_from_string(
                             mr.config.queue.QUEUE_FACTORY_FQ_CLASS)
 
-    assert issubclass(queue_factory_cls, mr.queue.QueueFactory) is True
+    assert issubclass(
+            queue_factory_cls, 
+            mr.queue.queue_factory.QueueFactory) is True
 
     topics = []
     for workflow_name in workflow_names:
@@ -21,15 +24,17 @@ def _make_queue(workflow_names):
             'workflow_name': workflow_name,
         }
 
-        topics.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements)
-        topics.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements)
+        topics.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE %
+                        replacements)
+        topics.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE %
+                        replacements)
 
     _logger.info("Generated topics from workflows:\nWorkflow(s): %s\n"
                  "Topics: %s", workflow_names, topics)
 
     factory = queue_factory_cls(topics)
 
-    return mr.queue.QUEUE_INSTANCE_CLS(
+    return mr.queue.types.QUEUE_INSTANCE_CLS(
             consumer=factory.get_consumer(),
             producer=factory.get_producer(),
             control=factory.get_control())

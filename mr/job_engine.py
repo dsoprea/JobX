@@ -14,7 +14,7 @@ import mr.models.kv.step
 import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.models.kv.trees.mapped_steps
-import mr.queue_manager
+import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.shared_types
 import mr.constants
@@ -24,7 +24,7 @@ _logger = logging.getLogger(__name__)
 
 class _QueuePusher(object):
     def __init__(self):
-        self.__q = mr.queue_manager.get_queue()
+        self.__q = mr.queue.queue_manager.get_queue()
 
     def queue_map_step_from_parameters(self, message_parameters):
 # TODO(dustin): We might increment a count of total steps processed on the 
@@ -398,7 +398,7 @@ class _RequestReceiver(object):
     """Receives the web-requests to push new job requests."""
 
     def __init__(self):
-        self.__q = mr.queue_manager.get_queue()
+        self.__q = mr.queue.queue_manager.get_queue()
         self.__wm = mr.workflow_manager.get_wm()
 
     def __push_request(self, message_parameters):

@@ -1,24 +1,16 @@
 import logging
-import pickle
 import collections
-import functools
-import threading
+import pickle
 
-import mr.config.queue
-import mr.models.kv.step
-import mr.models.kv.request
-import mr.models.kv.job
-import mr.models.kv.handler
-import mr.models.kv.invocation
-import mr.utility
-import mr.job_engine
-import mr.workflow_manager
 import mr.shared_types
+import mr.workflow_manager
+import mr.models.kv.request
+import mr.models.kv.invocation
+import mr.models.kv.job
+import mr.models.kv.step
+import mr.models.kv.handler
 
-QUEUE_INSTANCE_CLS = collections.namedtuple(
-                        'QueueInstance', 
-                        ['consumer', 'producer', 'control'])
-
+_logger = logging.getLogger(__name__)
 
 # We have to have a symbol that matches the alleged name in order to pickle.
 QueueMessageV1 = collections.namedtuple(
@@ -61,9 +53,6 @@ _QUEUE_FORMAT_CLS_MAP = {
 # Set to the current format version.
 _CURRENT_QUEUE_FORMAT = _QDF_1
 
-_logger = logging.getLogger(__name__)
-
-
 def _get_data_packager(format_version=_CURRENT_QUEUE_FORMAT):
     return _QUEUE_FORMAT_CLS_MAP[format_version]
 
@@ -90,7 +79,15 @@ class _QueueMessagePackager(object):
 
         return (job_class, format_version, packager.decode(encoded_data))
 
-_qmp = _QueueMessagePackager()
+_qmp = None
+
+def get_queue_message_processor():
+    global _qmp
+
+    if _qmp is None:
+        _qmp = _QueueMessagePackager()
+
+    return _qmp
 
 
 class _QueueMessageFunnel(object):
@@ -128,7 +125,7 @@ class _QueueMessageFunnel(object):
         if format_version == _QDF_1:
             (workflow_name, request_id, step_name, arguments) = deflated
 
-            wm = workflow_manager.get_wm()
+            wm = mr.workflow_manager.get_wm()
             managed_workflow = wm.get(workflow_name)
             workflow = managed_workflow.workflow
 
@@ -139,7 +136,14 @@ class _QueueMessageFunnel(object):
 
             job = mr.models.kv.job.get(workflow, request.job_name)
             step = mr.models.kv.step.get(workflow, step_name)
-            handler = mr.models.kv.step.get(workflow, step.handler_name)
+            
+            if invocation.direction == mr.constants.D_MAP:
+                handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
+            elif invocation.direction == mr.constants.D_REDUCE:
+                handler = mr.models.kv.handler.get(workflow, step.reduce_handler_name)
+            else:
+                raise ValueError("Invocation direction [%s] invalid: %s" % 
+                                 (invocation.direction, invocation))
         else:
             raise ValueError("Queue data format version is invalid: [%s]" % 
                              (format_version,))
@@ -157,120 +161,3 @@ _qmf = _QueueMessageFunnel()
 
 def get_queue_message_funnel():
     return _qmf
-
-
-class MessageHandler(object):
-    """Received all data coming off the queue."""
-
-    def __init__(self, *args, **kwargs):
-        super(MessageHandler, self).__init__(*args, **kwargs)
-        self.__sp = mr.job_engine.get_step_processor()
-
-    def classify_message(self, encoded_message):
-        (job_class, format_version, decoded_data) = _qmp.decode(encoded_message)
-        return (job_class, (format_version, decoded_data))
-
-    def __dispatch(self, handler, decoded_data_info):
-        (format_version, decoded_data) = decoded_data_info
-
-        _logger.debug("Dispatching dequeued message: (%d) %s", 
-                      format_version, decoded_data)
-
-        qmf = get_queue_message_funnel()
-        message_parameters = qmf.inflate(format_version, decoded_data)
-
-        t = threading.spawn(target=handler, args=(message_parameters,))
-# TODO(dustin): We'll need to join this after the step completes.
-        t.start()
-
-    def handle_map(self, connection, message, context):
-        """Corresponds to steps received with a type of ST_MAP."""
-
-        handler = functools.partial(self.__sp.handle_map, connection)
-        self.__dispatch(handler, context)
-
-    def handle_reduce(self, connection, message, context):
-        """Corresponds to steps received with a type of ST_REDUCE."""
-
-        handler = functools.partial(self.__sp.handle_reduce, connection)
-        self.__dispatch(handler, context)
-
-
-class QueueControl(object):
-    def start_consumer(self):
-        raise NotImplementedError()
-
-    def start_producer(self):
-        raise NotImplementedError()
-
-    def stop_consumer(self):
-        raise NotImplementedError()
-
-    def stop_producer(self):
-        raise NotImplementedError()
-
-
-class QueueProducer(object):
-    def is_alive(self):
-        """Determine if the client is still connected/healthy."""
-
-        raise NotImplementedError()
-
-    def push_one(self, topic, job_class, data):
-        flattened_data = get_queue_message_funnel().deflate(data)
-        raw_message = _qmp.encode(job_class, flattened_data)
-        self.push_one_raw(topic, raw_message)
-
-    def push_many(self, topic, job_class, data_list):
-
-        # We don't assert like in push_one() because it's not as efficient/
-        # elegant here.
-        qmf = get_queue_message_funnel()
-
-        raw_message_list = [_qmp.encode(
-                                job_class, 
-                                qmf.deflate(data)) 
-                            for data 
-                            in data_list]
-
-        self.push_many_raw(topic, raw_message_list)
-
-    def push_one_raw(self, topic, raw_message):
-        """Push one message, already encoded."""
-
-        raise NotImplementedError()
-
-    def push_many_raw(self, topic, raw_message_list):
-        """Push a list of messages, each already encoded."""
-
-        raise NotImplementedError()
-
-
-class QueueConsumer(object):
-    def is_alive(self):
-        """Determine if the client is still connected/healthy."""
-
-        raise NotImplementedError()
-
-    @property
-    def topic(self):
-        """What topic are we consuming?"""
-
-        return self.__topic
-
-    @property
-    def channel(self):
-        """What channel are we consuming on?"""
-
-        return self.__channel
-
-
-class QueueFactory(object):
-    def get_consumer(self):
-        raise NotImplementedError()
-
-    def get_producer(self):
-        raise NotImplementedError()
-
-    def get_control(self):
-        raise NotImplementedError()

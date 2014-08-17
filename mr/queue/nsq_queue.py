@@ -7,7 +7,11 @@ import nsq.message_handler
 #import nsq.identify
 
 import mr.config.nsq_queue
-import mr.queue
+import mr.queue.queue_factory
+import mr.queue.queue_consumer
+import mr.queue.queue_producer
+import mr.queue.queue_control
+import mr.queue.message_handler
 
 logging.getLogger('nsq').setLevel(logging.INFO)
 
@@ -16,16 +20,16 @@ _logger = logging.getLogger(__name__)
 
 class NsqMessageHandler(
         nsq.message_handler.MessageHandler, 
-        mr.queue.MessageHandler):
+        mr.queue.message_handler.MessageHandler):
 
     pass
 
 
-class _NsqQueueControl(mr.queue.QueueControl):
+class _NsqQueueControl(mr.queue.queue_control.QueueControl):
     """Control interface to the NSQ queue."""
 
     def __init__(self, producer, consumer):
-        super(mr.queue.QueueControl, self).__init__()
+        super(mr.queue.queue_control.QueueControl, self).__init__()
 
         self.__p = producer
         self.__c = consumer
@@ -79,11 +83,11 @@ class _NsqQueueControl(mr.queue.QueueControl):
         raise SystemError("Could not stop the queue consumer.")
 
 
-class _NsqQueueProducer(mr.queue.QueueProducer):
+class _NsqQueueProducer(mr.queue.queue_producer.QueueProducer):
     """Producer interface to the NSQ queue."""
 
     def __init__(self, producer):
-        super(mr.queue.QueueProducer, self).__init__()
+        super(mr.queue.queue_producer.QueueProducer, self).__init__()
 
         self.__p = producer
 
@@ -106,11 +110,11 @@ class _NsqQueueProducer(mr.queue.QueueProducer):
         c.mpub(topic, raw_message_list)
 
 
-class _NsqQueueConsumer(mr.queue.QueueConsumer):
+class _NsqQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
     """Consumer interface to the NSQ queue."""
 
     def __init__(self, consumer):
-        super(mr.queue.QueueConsumer, self).__init__()
+        super(mr.queue.queue_consumer.QueueConsumer, self).__init__()
 
         self.__c = consumer
 
@@ -119,7 +123,7 @@ class _NsqQueueConsumer(mr.queue.QueueConsumer):
         return self.__c.is_alive
 
 
-class NsqQueueFactory(mr.queue.QueueFactory):
+class NsqQueueFactory(mr.queue.queue_factory.QueueFactory):
     def __init__(self, topics):
         node_collection = mr.config.nsq_queue.NODE_COLLECTION
 
