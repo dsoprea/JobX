@@ -38,10 +38,15 @@ class MessageHandler(object):
         message_parameters = qmf.inflate(format_version, decoded_message)
 
         if mr.config.queue.IS_MULTITHREADED is True:
-            t = threading.spawn(target=handler, args=(message_parameters,))
+            _logger.debug("Dispatching into separate thread.")
+
+            t = threading.Thread(target=handler, args=(message_parameters,))
 # TODO(dustin): We'll need to join this after the step completes.
             t.start()
         else:
+            _logger.debug("Running message handler synchronously (not "
+                          "multithreaded).")
+
             handler(message_parameters)
 
     def handle_map(self, format_version, decoded_message):

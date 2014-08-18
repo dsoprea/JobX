@@ -236,14 +236,15 @@ class _StepProcessor(object):
                              "announced count (%d)." % 
                              (i, handler_name, step_count))
 
-    def handle_map(self, message_handler, message_parameters):
+    def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
 
         step = message_parameters.step
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
         
-        managed_workflow = mr.workflow_manager.get(workflow.workflow_name)
+        wm = mr.workflow_manager.get_wm()
+        managed_workflow = wm.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
 
         _logger.debug("Processing MAP: %s", invocation)
@@ -305,6 +306,7 @@ class _StepProcessor(object):
 # TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
+# TODO(dustin): This is trying to create the record.
             invocation.save()
 
             raise
@@ -320,7 +322,7 @@ class _StepProcessor(object):
 
         return mr.models.kv.invocation.Invocation.atomic_update(get_cb, set_cb)
 
-    def handle_reduce(self, message_handler, message_parameters):
+    def handle_reduce(self, message_parameters):
         """Corresponds to steps received with a type of mr.constants.D_REDUCE.
         """
 
@@ -328,7 +330,8 @@ class _StepProcessor(object):
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
 
-        managed_workflow = mr.workflow_manager.get(workflow.workflow_name)
+        wm = mr.workflow_manager.get_wm()
+        managed_workflow = wm.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
 
         _logger.debug("Processing REDUCE: %s", invocation)
@@ -399,7 +402,6 @@ class _RequestReceiver(object):
 
     def __init__(self):
         self.__q = mr.queue.queue_manager.get_queue()
-        self.__wm = mr.workflow_manager.get_wm()
 
     def __push_request(self, message_parameters):
         pusher = _get_pusher()

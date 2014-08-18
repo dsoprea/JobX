@@ -75,7 +75,7 @@ class _QueueMessagePackager(object):
         (job_class, format_version, encoded_data) = \
             pickle.loads(encoded_message)
 
-        packager = get_data_packager(format_version)
+        packager = _get_data_packager(format_version)
 
         return (job_class, format_version, packager.decode(encoded_data))
 

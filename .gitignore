@@ -8,4 +8,4 @@
 /mapreduce.egg-info/
 /dev/etcd/
 /*prj
-/mr/resources/fake_spool_auth/*
+/mr/resources/fake_spool_path/*

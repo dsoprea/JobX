@@ -3,6 +3,8 @@ import base64
 import threading
 import time
 import os
+import glob
+import traceback
 
 import mr.config.fake_queue
 import mr.queue.queue_factory
@@ -14,6 +16,12 @@ import mr.queue.message_handler
 _logger = logging.getLogger(__name__)
 
 _SPOOL_PATH = os.environ['MR_FAKE_QUEUE_SPOOL_PATH']
+
+_FAILED_FILEPATH_TEMPLATE = '%(filepath)s.failed'
+_FAILED_MESSAGE_FILEPATH_TEMPLATE = '%(filepath)s.failed.message'
+_DELAY_AFTER_JOB_HIT = 1
+_DELAY_AFTER_JOB_MISS = 2
+_SPOOLED_MESSAGE_PATTERN = '*.spooled'
 
 
 class _FakeMessageHandler(mr.queue.message_handler.MessageHandler):
@@ -90,6 +98,8 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
 
         self.__topics = topics
         self.__kill_event = threading.Event()
+        self.__fmh = _FakeMessageHandler()
+
 
     def is_alive(self):
         return True
@@ -109,29 +119,54 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
         _logger.info("Waiting for consumer death.")
         self.__t.join()
 
-    def __thread(self):
-        message_names = None
-        def load_messages():
-            message_names = os.listdir(_SPOOL_PATH)
+    def __read_and_process(self, filename):
+        filepath = os.path.join(_SPOOL_PATH, filename)
+        with open(filepath) as f:
+            encoded_message_ascii = ''.join(f.readlines())
+            encoded_message = base64.b64decode(encoded_message_ascii)
 
-        load_messages()
-        fmh = _FakeMessageHandler()
+        self.__fmh.process_message(encoded_message)
+
+    def __mark_error(self, filename, message):
+        old_filepath = os.path.join(_SPOOL_PATH, filename)
+        
+        replacements = {
+            'filepath': old_filepath,
+        }
+        
+        new_filepath = _FAILED_FILEPATH_TEMPLATE % replacements
+
+        os.rename(old_filepath, new_filepath)
+
+        message_filepath = _FAILED_MESSAGE_FILEPATH_TEMPLATE % replacements
+
+        with open(message_filepath, 'w') as f:
+            f.write(message)
+
+    def __thread(self):
+        def load_messages():
+            return glob.glob(os.path.join(_SPOOL_PATH, _SPOOLED_MESSAGE_PATTERN))
+
+        message_names = load_messages()
         while self.__kill_event.is_set() is False:
             if not message_names:
-                load_messages()
+                message_names = load_messages()
 
             if message_names:
                 filename = message_names[0]
-                del message_names[0]
-                filepath = os.path.join(_SPOOL_PATH, filename)
-                with open(filepath) as f:
-                    encoded_message_ascii = ''.join(f.readlines())
-                    encoded_message = base64.b64decode(encoded_message_ascii)
 
-                fmh.process_message(encoded_message)
-                time.sleep(.1)
+                try:
+                    self.__read_and_process(filename)
+                except:
+                    _logger.exception("Job failed: [%s]", filename)
+
+                    message = traceback.format_exc()
+                    self.__mark_error(filename, message)
+
+                del message_names[0]
+                time.sleep(_DELAY_AFTER_JOB_HIT)
             else:
-                time.sleep(2)
+                time.sleep(_DELAY_AFTER_JOB_MISS)
 
         _logger.warning("Consumer terminating.")
 
