@@ -14,7 +14,7 @@ class Request(mr.models.kv.model.Model):
     context = mr.models.kv.model.Field(is_required=False)
 
     def __init__(self, workflow=None, *args, **kwargs):
-        super(Request, self).__init__(self, *args, **kwargs)
+        super(Request, self).__init__(*args, **kwargs)
 
         self.__workflow = workflow
 

@@ -34,7 +34,7 @@ class Invocation(mr.models.kv.model.Model):
     direction = mr.models.kv.model.EnumField(mr.constants.DIRECTIONS)
 
     def __init__(self, workflow=None, *args, **kwargs):
-        super(Invocation, self).__init__(self, *args, **kwargs)
+        super(Invocation, self).__init__(*args, **kwargs)
         self.__workflow = workflow
 
     def get_identity(self):

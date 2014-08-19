@@ -13,7 +13,7 @@ class Job(mr.models.kv.model.Model):
     initial_step_name = mr.models.kv.model.Field()
 
     def __init__(self, workflow=None, *args, **kwargs):
-        super(Job, self).__init__(self, *args, **kwargs)
+        super(Job, self).__init__(*args, **kwargs)
 
         self.__workflow = workflow
 

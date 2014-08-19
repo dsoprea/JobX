@@ -64,10 +64,18 @@ class Model(mr.models.kv.common.CommonKv):
     key_field = None
 
     def __init__(self, is_stored=False, *args, **data):
+        assert issubclass(is_stored.__class__, bool) is True
+
+        _logger.debug("Instantiating [%s]. IS_STORED=[%s]", 
+                      self.__class__.__name__, is_stored)
+
         self.__load_from_data(data, is_stored=is_stored)
 
     def __load_from_data(self, data, is_stored=False):
         cls = self.__class__
+
+        _logger.debug("Loading data on model [%s]. IS_STORED=[%s]", 
+                      cls.__name__, is_stored)
 
         # If the key wasn't given, assign it randomly.
         if cls.key_field not in data:
@@ -200,6 +208,9 @@ class Model(mr.models.kv.common.CommonKv):
 
         identity = self.get_identity()
 
+        _logger.debug("Saving model [%s]. IS_STORED=[%s]", 
+                      cls.__name__, self.__is_stored)
+
         if self.__is_stored is True:
             cls.__update_entity(
                     identity, 
@@ -210,7 +221,7 @@ class Model(mr.models.kv.common.CommonKv):
                     identity, 
                     self.get_data())
 
-        self.__is_stored = True
+            self.__is_stored = True
 
     def delete(self):
         cls = self.__class__
@@ -238,13 +249,17 @@ class Model(mr.models.kv.common.CommonKv):
         self.__load_from_data(data, is_stored=True)
         self.__class__.__apply_attributes(self, attributes)
 
+    @property
+    def is_stored(self):
+        return self.__is_stored
+
     def get_identity(self):
         raise NotImplementedError()
 
     @classmethod
     def __build_from_data(cls, key, data):
         data[cls.key_field] = key
-        return cls(True, **data)
+        return cls(is_stored=True, **data)
 
     @classmethod
     def __apply_attributes(cls, obj, attributes):
@@ -256,6 +271,8 @@ class Model(mr.models.kv.common.CommonKv):
 
         obj = cls.__build_from_data(key, data)
         cls.__apply_attributes(obj, attributes)
+
+        assert obj.is_stored is True
 
         return obj
 

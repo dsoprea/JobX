@@ -148,6 +148,17 @@ class _QueueMessageFunnel(object):
             raise ValueError("Queue data format version is invalid: [%s]" % 
                              (format_version,))
 
+        _logger.debug("Job has been inflated:\n"
+                      "WORKFLOW: %s\n"
+                      "INVOCATION: %s\n"
+                      "REQUEST: %s\n"
+                      "JOB: %s\n"
+                      "STEP: %s\n"
+                      "HANDLER: %s\n"
+                      "ARGUMENTS: %s",
+                      workflow, invocation, request, job, step, handler,
+                      arguments)
+
         return mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
                 workflow=workflow,
                 invocation=invocation,

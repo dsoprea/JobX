@@ -21,7 +21,8 @@ HANDLER_DEFINITION_CLS = collections.namedtuple(
                              'description', 
                              'source_code',
                              'argument_spec',
-                             'source_type'])
+                             'source_type',
+                             'cast_arguments'])
 
 
 class HandlerFormatException(Exception):
@@ -116,19 +117,24 @@ class Handlers(object):
             _logger.info("Compiling handler: [%s]", name)
 
             hd = self.__library.get_handler(name)
-            self.__compiled[name] = self.__compile(arg_names, hd.source_code)
+            self.__compiled[name] = self.__compile(
+                                        name, 
+                                        arg_names, 
+                                        hd.source_code)
         else:
             _logger.warning("No code has to be recompiled, even though the "
                             "handlers were supposed to have changed.")
 
-    def __compile(self, arg_names, code):
+    def __compile(self, name, arg_names, code):
         name = "(lambda compile)"
      
         # Needs to start with a letter.
         id_ = 'a' + hashlib.sha1(str(random.random())).hexdigest()
         code = "def " + id_ + "(" + ', '.join(arg_names) + "):\n" + \
                '\n'.join(('  ' + line) for line in code.replace('\r', '').split('\n')) + '\n'
-     
+
+        _logger.debug("Handler [%s]\n\n%s\n", name, code)
+
         c = compile(code, name, 'exec')
         locals_ = {}
         exec(c, globals(), locals_)
@@ -138,8 +144,12 @@ class Handlers(object):
     def run_handler(self, name, arguments_dict):
         hd = self.__library.get_handler(name)
 
-        arguments_list = [value 
-                          for (name, value) 
-                          in hd.cast_arguments(arguments_dict)]
+        arguments_list = [v for (k, v) in hd.cast_arguments(arguments_dict)]
 
-        return self.__compiled[name](*arguments_list)
+        try:
+            handler = self.__compiled[name]
+        except KeyError:
+            _logger.exception("Handler [%s] is not registered.", name)
+            raise
+
+        return handler(*arguments_list)

@@ -65,6 +65,8 @@ class KvLibraryAdapter(LibraryAdapter):
     def get_handler(self, handler_name):
         """Return a handler-definition object."""
 
+# TODO(dustin): We need to keep a local dictionary. IT's faster, and the reason 
+#               that we have versioning.
         handler = mr.models.kv.handler.get(self.__workflow, handler_name)
 
         return mr.handlers.general.HANDLER_DEFINITION_CLS(
@@ -73,7 +75,8 @@ class KvLibraryAdapter(LibraryAdapter):
                 description=handler.description,
                 source_code=handler.source_code,
                 argument_spec=handler.argument_spec,
-                source_type=handler.source_type)
+                source_type=handler.source_type,
+                cast_arguments=handler.cast_arguments)
 
     def create_handler(self, hd):
         """Store the given new handler."""

@@ -12,7 +12,7 @@ class InvocationMap(mr.models.kv.model.Model):
     is_done = mr.models.kv.model.Field()
 
     def __init__(self, workflow=None, *args, **kwargs):
-        super(Invocation, self).__init__(self, *args, **kwargs)
+        super(Invocation, self).__init__(*args, **kwargs)
         self.__workflow = workflow
 
     def get_identity(self):

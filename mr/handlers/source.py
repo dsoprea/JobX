@@ -1,3 +1,4 @@
+import logging
 import os
 import fnmatch
 import hashlib
@@ -5,6 +6,8 @@ import json
 
 import mr.config.handler
 import mr.handlers.general
+
+_logger = logging.getLogger(__name__)
 
 
 class SourceAdapter(object):
@@ -43,6 +46,8 @@ class FilesystemSourceAdapter(SourceAdapter):
     def __enumerate_handlers(self):
         pattern = mr.config.handler.SOURCE_FILENAME_PATTERN
         source_path = mr.config.handler.SOURCE_PATH
+
+        _logger.debug("Handler source path: [%s]", source_path)
 
         for filename in os.listdir(source_path):
             if fnmatch.fnmatch(filename, pattern) is False:
@@ -107,4 +112,6 @@ class FilesystemSourceAdapter(SourceAdapter):
             handlers = self.__enumerate_handlers()
 
         states = [version for (name, version) in handlers]
+        _logger.debug("Assembled states from (%d) handlers.", len(states))
+
         return hashlib.sha1(','.join(states)).hexdigest()

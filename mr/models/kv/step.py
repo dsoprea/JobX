@@ -38,7 +38,7 @@ class Step(mr.models.kv.model.Model):
     reduce_handler_name = mr.models.kv.model.Field(is_required=False)
 
     def __init__(self, workflow=None, *args, **kwargs):
-        super(Step, self).__init__(self, *args, **kwargs)
+        super(Step, self).__init__(*args, **kwargs)
 
         self.__workflow = workflow
 

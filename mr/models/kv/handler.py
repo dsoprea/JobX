@@ -33,7 +33,7 @@ class Handler(mr.models.kv.model.Model):
     handler_type = mr.models.kv.model.EnumField(HANDLER_TYPES)
 
     def __init__(self, workflow=None, *args, **kwargs):
-        super(Handler, self).__init__(self, *args, **kwargs)
+        super(Handler, self).__init__(*args, **kwargs)
         self.__update_version()
 
         self.__workflow = workflow
