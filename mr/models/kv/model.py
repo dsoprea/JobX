@@ -181,6 +181,9 @@ class Model(mr.models.kv.common.CommonKv):
     def presave(self):
         pass
 
+    def postsave(self):
+        pass
+
     @classmethod
     def atomic_update(cls, get_cb, set_cb, 
                       max_attempts=\
@@ -222,6 +225,8 @@ class Model(mr.models.kv.common.CommonKv):
                     self.get_data())
 
             self.__is_stored = True
+
+        self.postsave()
 
     def delete(self):
         cls = self.__class__
