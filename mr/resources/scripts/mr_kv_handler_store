@@ -1,0 +1,180 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import logging
+import argparse
+import json
+import hashlib
+
+import mr.config.log
+import mr.config.handler
+import mr.models.kv.step
+import mr.models.kv.workflow
+import mr.models.kv.handler
+
+_logger = logging.getLogger(__name__)
+
+description = "Create a step entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('path', help="Path of source-code and meta-files")
+
+#parser.add_argument('name', help='Name')
+#parser.add_argument('description', help='Description')
+#parser.add_argument('source_type', help='Source language')
+#parser.add_argument('handler_type', help='Handler type')
+#
+#parser.add_argument('-a', '--argument', 
+#                    required=True, 
+#                    action='append', 
+#                    nargs=2, 
+#                    help='Argument name and type (must be valid)')
+#
+args = parser.parse_args()
+#
+#stdin_waiting = select.select([sys.stdin], [], [], 0)[0]
+#if not stdin_waiting:
+#    print("Please provide code via STDIN.")
+#    sys.exit(1)
+#
+#source_code = sys.stdin.read().strip()
+
+def _scan_files(path, workflow_name):
+    source_suffix = mr.config.handler.SOURCE_FILENAME_SUFFIX
+    source_suffix_len = len(source_suffix)
+
+    meta_suffix = mr.config.handler.SOURCE_META_FILENAME_SUFFIX
+    meta_suffix_len = len(meta_suffix)
+
+    source_s = set()
+    meta_s = set()
+    handlers_s = set()
+    for filename in os.listdir(args.path):
+        if filename.endswith(source_suffix) is True:
+            name = filename[:-source_suffix_len]
+
+            if name in meta_s:
+                meta_s.remove(name)
+                _check_handler(path, name, workflow_name)
+            else:
+                source_s.add(name)
+
+        elif filename.endswith(meta_suffix) is True:
+            name = filename[:-meta_suffix_len]
+
+            if name in source_s:
+                source_s.remove(name)
+                _check_handler(path, name, workflow_name)
+            else:
+                meta_s.add(name)
+
+        handlers_s.add(name)
+
+    # Make sure we had matching source- and meta-files.
+
+    if source_s:
+        print("There were one or more source-files without meta-files: %s" % 
+              (source_s,))
+    
+    if meta_s:
+        print("There were one or more meta-files without source-files: %s" % 
+              (meta_s,))
+
+    if source_s or meta_s:
+        raise EnvironmentError("There were one or more unbalanced files.")
+
+    # Tabulate the handlers being used by steps.
+
+    used_handlers = {}
+    for step in mr.models.kv.step.Step.list(workflow_name):
+        try:
+            used_handlers[step.map_handler_name] = [step.step_name]
+        except KeyError:
+            used_handlers[step.map_handler_name].append(step.step_name)
+
+        try:
+            used_handlers[step.reduce_handler_name] = [step.step_name]
+        except KeyError:
+            used_handlers[step.reduce_handler_name].append(step.step_name)
+
+    # Remove handlers that we didn't find source-code for.
+
+    for handler in mr.models.kv.handler.Handler.list(workflow_name):
+        if handler.handler_name in handlers_s:
+            continue
+
+        print("Handler [%s]: Removing." % (handler.handler_name,))
+
+        # Verify that no steps implement this handler.
+
+        if handler.handler_name in used_handlers:
+            print("Handler [%s]: Did not have source-code file, but is used by"
+                  "\n\t%s" % 
+                  (handler.handler_name, used_handlers[handler.handler_name]))
+        else:
+            # Nothing uses it. Delete it.
+            handler.delete()
+
+def _check_handler(path, name, workflow_name):
+    meta_filepath = os.path.join(
+                        path,
+                        name + mr.config.handler.SOURCE_META_FILENAME_SUFFIX)
+
+    with open(meta_filepath) as f:
+        meta_raw = f.read()
+
+    meta = json.loads(meta_raw)
+
+    required_fields_s = set(mr.config.handler.REQUIRED_META_FIELDS)
+    available_fields_s = set(meta.keys())
+
+    if required_fields_s != available_fields_s:
+        raise ValueError("Handler has invalid/missing meta-fields: [%s]" % 
+                         (name,))
+
+    source_filepath = os.path.join(
+                        path,
+                        name + mr.config.handler.SOURCE_FILENAME_SUFFIX)
+
+    with open(source_filepath) as f:
+        source_code = f.read()
+
+    version = hashlib.sha1(meta_raw + source_code).hexdigest()
+
+    workflow = mr.models.kv.workflow.get(workflow_name)
+
+    try:
+        handler = mr.models.kv.handler.get(workflow, name)
+    except KeyError:
+        _store_handler(handler, meta, source_code, version, True)
+    else:
+        if handler.version != version:
+            _store_handler(handler, meta, source_code, version, False)
+        else:
+            print("Handler [%s]: Not changed." % (name,))
+
+def _store_handler(handler, meta, source_code, version, create_new):
+    if create_new is True:
+        print("Handler [%s]: Creating." % (handler.handler_name,))
+    else:
+        print("Handler [%s]: Updating." % (handler.handler_name,))
+
+# TODO(dustin): Compile the code so as to test it.
+# TODO(dustin): We might also want to require "test" arguments and a test result, for unit-tests.
+
+    handler.description = meta['description']
+    handler.argument_spec = meta['argument_spec']
+    handler.source_type = meta['source_type']
+    handler.source_code = source_code
+    handler.version = version
+    handler.handler_type = meta['handler_type']
+
+    handler.save()
+
+_scan_files(args.path, args.workflow_name)

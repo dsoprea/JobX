@@ -1,0 +1,9 @@
+{
+    "description": "mapper test handler 1",
+    "argument_spec": [
+        ["arg1", "int"],
+        ["arg2", "int"]
+    ],
+    "source_type": "python",
+    "handler_type": "mapper"
+}

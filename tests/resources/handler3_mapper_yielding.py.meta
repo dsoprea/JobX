@@ -1,0 +1,8 @@
+{
+    "description": "mapper test handler 3 (with yields)",
+    "argument_spec": [
+        ["arg1", "int"]
+    ],
+    "source_type": "python",
+    "handler_type": "mapper"
+}

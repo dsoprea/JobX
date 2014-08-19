@@ -43,8 +43,8 @@ class Step(mr.models.kv.model.Model):
         self.__workflow = workflow
 
     def presave(self):
-# TODO(dustin): Validate handlers.
-        pass
+# TODO(dustin): Validate that handlers exist.
+        assert self.map_handler_name != self.reduce_handler_name
 
     def get_identity(self):
         return (self.__workflow.workflow_name, self.step_name)

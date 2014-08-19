@@ -119,7 +119,7 @@ class Handlers(object):
             _logger.info("Compiling handler: [%s]", name)
 
             hd = self.__library.get_handler(name)
-            self.__compiled[name] = self.__compile(
+            self.__compiled[name] = self.compile(
                                         name, 
                                         arg_names, 
                                         hd.source_code)
@@ -127,7 +127,8 @@ class Handlers(object):
         if handler_count == 0:
             _logger.warning("No handlers were presented by the library. No code was compiled.")
 
-    def __compile(self, name, arg_names, code):
+# TODO(dustin): This needs to compile for whatever language the source-code is.
+    def compile(self, name, arg_names, code):
         name = "(lambda handler '%s')" % (name,)
      
         # Needs to start with a letter. We don't want to use the actual name, 

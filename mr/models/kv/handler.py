@@ -1,10 +1,12 @@
 import hashlib
 import sys
-import hashlib
+import logging
 
 import mr.constants
 import mr.models.kv.model
 import mr.models.kv.workflow
+
+_logger = logging.getLogger(__name__)
 
 # Handler types.
 HT_MAPPER = 'mapper'
@@ -34,18 +36,11 @@ class Handler(mr.models.kv.model.Model):
 
     def __init__(self, workflow=None, *args, **kwargs):
         super(Handler, self).__init__(*args, **kwargs)
-        self.__update_version()
 
         self.__workflow = workflow
 
     def get_identity(self):
         return (self.__workflow.workflow_name, self.handler_name)
-
-    def __update_version(self):
-        self.version = hashlib.sha1(self.source_code).hexdigest()
-
-    def presave(self):
-        self.__update_version()
 
     def postsave(self):
         cls = self.__class__
@@ -53,6 +48,10 @@ class Handler(mr.models.kv.model.Model):
         _logger.info("Updating workflow with new handlers state.")
 
         def calculate_state():
+            # Stamp a hash that represents -all- of the handlers' states on the 
+            # workflow.
+            _logger.info("Calculating handlers state.")
+
             versions = (str(h.version) 
                         for h 
                         in cls.list(self.__workflow.workflow_name))
