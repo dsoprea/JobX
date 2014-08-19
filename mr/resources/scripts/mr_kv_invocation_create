@@ -37,7 +37,7 @@ arguments_dict = dict(args.argument)
 handler.cast_arguments(arguments_dict)
 
 i = mr.models.kv.invocation.Invocation(
-        workflow=workflow, 
+        workflow_name=workflow_name, 
         step_name=step.step_name, 
         arguments=arguments_dict)
 

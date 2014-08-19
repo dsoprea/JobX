@@ -41,7 +41,7 @@ i.save()
 
 r = mr.models.kv.request.Request(
         invocation_id=i.invocation_id,
-        workflow=workflow, 
+        workflow_name=workflow_name, 
         job_name=job.job_name, 
         context=args.context)
 

@@ -43,7 +43,7 @@ except KeyError:
     sys.exit(2)
 
 s = mr.models.kv.step.Step(
-        workflow=workflow, 
+        workflow_name=workflow_name, 
         step_name=args.name, 
         description=args.description, 
         map_handler_name=handler_map.handler_name,

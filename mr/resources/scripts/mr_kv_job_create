@@ -28,7 +28,7 @@ workflow = mr.models.kv.workflow.get(args.workflow_name)
 initial_step = mr.models.kv.step.get(workflow, args.initial_step_name)
 
 job = mr.models.kv.job.Job(
-        workflow=workflow, 
+        workflow_name=workflow_name, 
         job_name=args.job_name, 
         description=args.description, 
         initial_step_name=initial_step.step_name)

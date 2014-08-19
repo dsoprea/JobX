@@ -4,7 +4,7 @@ import logging
 
 import mr.constants
 import mr.models.kv.model
-import mr.models.kv.workflow
+import mr.handlers.general
 
 _logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class Handler(mr.models.kv.model.Model):
     key_field = 'handler_name'
 
     handler_name = mr.models.kv.model.Field()
+    workflow_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
 
     # This is a list of 2-tuples, so that we can maintain order.
@@ -34,48 +35,11 @@ class Handler(mr.models.kv.model.Model):
     version = mr.models.kv.model.Field(is_required=False)
     handler_type = mr.models.kv.model.EnumField(HANDLER_TYPES)
 
-    def __init__(self, workflow=None, *args, **kwargs):
-        super(Handler, self).__init__(*args, **kwargs)
-
-        self.__workflow = workflow
-
     def get_identity(self):
-        return (self.__workflow.workflow_name, self.handler_name)
+        return (self.workflow_name, self.handler_name)
 
     def postsave(self):
-        cls = self.__class__
-
-        _logger.info("Updating workflow with new handlers state.")
-
-        def calculate_state():
-            # Stamp a hash that represents -all- of the handlers' states on the 
-            # workflow.
-            _logger.info("Calculating handlers state.")
-
-            versions = (str(h.version) 
-                        for h 
-                        in cls.list(self.__workflow.workflow_name))
-
-            hash_ = hashlib.sha1(','.join(versions)).hexdigest()
-            _logger.debug("Calculated handlers-state: [%s]", hash_)
-
-            return hash_
-
-        def get_cb():
-            self.__workflow.refresh()
-            return self.__workflow
-
-        def set_cb(obj):
-            obj.handlers_state = calculate_state()
-
-        self.__workflow.__class__.atomic_update(get_cb, set_cb)
-# TODO(dustin): Verify that the workflow object that we have reflects the 
-#               latest state.
-        _logger.debug("Workflow handlers state is now: [%s]", 
-                      self.__workflow.handlers_state)
-
-    def set_workflow(self, workflow):
-        self.__workflow = workflow
+        mr.handlers.general.update_workflow_handle_state(self.workflow_name)
 
 # TODO(dustin): We need to allow optional parameters, if for nothing else then 
 #               backwards compatibility.
@@ -107,15 +71,15 @@ class Handler(mr.models.kv.model.Model):
 
             yield (name, typed_datum)
 
-    @property
-    def workflow(self):
-        return self.__workflow
-
 def get(workflow, handler_name):
-    m = Handler.get_and_build(
+    obj = Handler.get_and_build(
             (workflow.workflow_name, handler_name),
             handler_name)
 
-    m.set_workflow(workflow)
+    return obj
 
-    return m
+def create(workflow, **fields):
+    obj = Handler(workflow_name=workflow.workflow_name, **fields)
+    obj.save()
+
+    return obj

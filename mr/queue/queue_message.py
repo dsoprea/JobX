@@ -149,13 +149,13 @@ class _QueueMessageFunnel(object):
                              (format_version,))
 
         _logger.debug("Job has been inflated:\n"
-                      "WORKFLOW: %s\n"
-                      "INVOCATION: %s\n"
-                      "REQUEST: %s\n"
-                      "JOB: %s\n"
-                      "STEP: %s\n"
-                      "HANDLER: %s\n"
-                      "ARGUMENTS: %s",
+                      "WORKFLOW:\n  %s\n"
+                      "INVOCATION:\n  %s\n"
+                      "REQUEST:\n  %s\n"
+                      "JOB:\n  %s\n"
+                      "STEP:\n  %s\n"
+                      "HANDLER:\n  %s\n"
+                      "ARGUMENTS:\n  %s",
                       workflow, invocation, request, job, step, handler,
                       arguments)
 

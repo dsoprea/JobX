@@ -9,6 +9,7 @@ class Invocation(mr.models.kv.model.Model):
     key_field = 'invocation_id'
 
     invocation_id = mr.models.kv.model.Field()
+    workflow_name = mr.models.kv.model.Field()
     parent_invocation_id = mr.models.kv.model.Field(is_required=False)
     step_name = mr.models.kv.model.Field()
 
@@ -29,26 +30,13 @@ class Invocation(mr.models.kv.model.Model):
 
     direction = mr.models.kv.model.EnumField(mr.constants.DIRECTIONS)
 
-    def __init__(self, workflow=None, *args, **kwargs):
-        super(Invocation, self).__init__(*args, **kwargs)
-        self.__workflow = workflow
-
     def get_identity(self):
-        return (self.__workflow.workflow_name, self.invocation_id)
-
-    def set_workflow(self, workflow):
-        self.__workflow = workflow
-
-    @property
-    def workflow(self):
-        return self.__workflow
+        return (self.workflow_name, self.invocation_id)
 
 def get(workflow, invocation_id):
     m = Invocation.get_and_build(
             (workflow.workflow_name, 
              invocation_id), 
             invocation_id)
-
-    m.set_workflow(workflow)
 
     return m

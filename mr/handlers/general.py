@@ -1,13 +1,10 @@
-import datetime
 import random
 import hashlib
 import os
-import fnmatch
-import hashlib
 import logging
 import collections
-import json
 
+import mr.config
 import mr.models.kv.handler
 import mr.models.kv.workflow
 
@@ -139,7 +136,14 @@ class Handlers(object):
         code = "def " + id_ + "(" + ', '.join(arg_names) + "):\n" + \
                '\n'.join(('  ' + line) for line in code.replace('\r', '').split('\n')) + '\n'
 
-        _logger.debug("Handler [%s]\n\n%s\n", name, code)
+        if mr.config.IS_DEBUG is True:
+            # Since this will evaluated the parameters but will only show 
+            # anything if we're showing debug logging, we'll only do this 
+            # *while* in debug mode.
+
+            # The maximum line-width for proper Python modules.
+            border = '-' * 79
+            _logger.debug("Handler [%s]\n%s\n%s\n%s", name, border, code.rstrip(), border)
 
         c = compile(code, name, 'exec')
         locals_ = {}
@@ -159,3 +163,34 @@ class Handlers(object):
             raise
 
         return handler(*arguments_list)
+
+def update_workflow_handle_state(workflow_name):
+    _logger.info("Updating workflow with new handlers state.")
+
+    def calculate_state():
+        # Stamp a hash that represents -all- of the handlers' states on the 
+        # workflow.
+        _logger.info("Calculating handlers state.")
+
+        versions = (str(h.version) 
+                    for h 
+                    in mr.models.kv.handler.Handler.list(workflow_name))
+
+        hash_ = hashlib.sha1(','.join(versions)).hexdigest()
+        _logger.debug("Calculated handlers-state: [%s]", hash_)
+
+        return hash_
+
+    workflow = mr.models.kv.workflow.get(workflow_name)
+
+    def get_cb():
+        workflow.refresh()
+        return workflow
+
+    def set_cb(obj):
+        obj.handlers_state = calculate_state()
+
+    workflow.__class__.atomic_update(get_cb, set_cb)
+# TODO(dustin): Verify that the workflow record reflects the latest state.
+    _logger.debug("Workflow handlers state is now: [%s]", 
+                  workflow.handlers_state)

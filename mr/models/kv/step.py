@@ -23,6 +23,7 @@ class Step(mr.models.kv.model.Model):
     key_field = 'step_name'
 
     step_name = mr.models.kv.model.Field()
+    workflow_name = mr.models.kv.model.Field()
     description = mr.models.kv.model.Field()
 
     # A map handler may or may not yield additional steps. If it does, it'll 
@@ -37,27 +38,14 @@ class Step(mr.models.kv.model.Model):
     map_handler_name = mr.models.kv.model.Field()
     reduce_handler_name = mr.models.kv.model.Field(is_required=False)
 
-    def __init__(self, workflow=None, *args, **kwargs):
-        super(Step, self).__init__(*args, **kwargs)
-
-        self.__workflow = workflow
-
     def presave(self):
 # TODO(dustin): Validate that handlers exist.
         assert self.map_handler_name != self.reduce_handler_name
 
     def get_identity(self):
-        return (self.__workflow.workflow_name, self.step_name)
-
-    def set_workflow(self, workflow):
-        self.__workflow = workflow
-
-    @property
-    def workflow(self):
-        return self.__workflow
+        return (self.workflow_name, self.step_name)
 
 def get(workflow, step_name):
     m = Step.get_and_build((workflow.workflow_name, step_name), step_name)
-    m.set_workflow(workflow)
 
     return m

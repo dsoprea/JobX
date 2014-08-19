@@ -77,8 +77,11 @@ class Model(mr.models.kv.common.CommonKv):
         _logger.debug("Loading data on model [%s]. IS_STORED=[%s]", 
                       cls.__name__, is_stored)
 
-        # If the key wasn't given, assign it randomly.
-        if cls.key_field not in data:
+        # If the key wasn't non-None, assign it randomly.
+        #
+        # Previously, we allowed this column to be optional, but we'd get 
+        # spurious keys without realizing it.
+        if data[cls.key_field] is None:
             key = cls.make_opaque()
             _logger.debug("Model [%s] was not loaded with key-field [%s]. "
                           "Generating key: [%s]", 
@@ -214,11 +217,14 @@ class Model(mr.models.kv.common.CommonKv):
         _logger.debug("Saving model [%s]. IS_STORED=[%s]", 
                       cls.__name__, self.__is_stored)
 
+
         if self.__is_stored is True:
+            state = self.__state if enforce_pristine is True else None
+
             cls.__update_entity(
                     identity, 
                     self.get_data(),
-                    enforce_pristine=enforce_pristine)
+                    check_against_state=state)
         else:
             cls.__create_entity(
                     identity, 
@@ -268,6 +274,8 @@ class Model(mr.models.kv.common.CommonKv):
 
     @classmethod
     def __apply_attributes(cls, obj, attributes):
+        # This won't be set prior to this. There's no benefit to it having a 
+        # None value, and might potentially be confusing.
         obj.__state = attributes['state']
 
     @classmethod
@@ -303,7 +311,7 @@ class Model(mr.models.kv.common.CommonKv):
                          (cls.entity_class, parent, identity))
 
     @classmethod
-    def __update_entity(cls, identity, data={}, enforce_pristine=False):
+    def __update_entity(cls, identity, data={}, check_against_state=None):
 #        identity = cls.flatten_identity(identity)
         parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
@@ -315,7 +323,7 @@ class Model(mr.models.kv.common.CommonKv):
                 parent, 
                 identity, 
                 data, 
-                enforce_pristine=enforce_pristine)
+                check_against_state=check_against_state)
         except etcd.exceptions.EtcdPreconditionException:
             pass
         else:
@@ -361,15 +369,13 @@ class Model(mr.models.kv.common.CommonKv):
 
     @classmethod
     def __update_only_encoded(cls, parent, identity, value, 
-                              enforce_pristine=False):
+                              check_against_state=None):
         key = cls.key_from_identity(parent, identity)
-
-        state = self.__state if enforce_pristine is True else None
 
         return _dl.update_only(
                 key, 
                 mr.config.kv.ENCODER(value), 
-                check_against_state=state)
+                check_against_state=check_against_state)
 
     @classmethod
     def __create_only_encoded(cls, parent, identity, value):

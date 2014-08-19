@@ -152,18 +152,35 @@ def _check_handler(path, name, workflow_name):
     try:
         handler = mr.models.kv.handler.get(workflow, name)
     except KeyError:
-        _store_handler(handler, meta, source_code, version, True)
+        _create_handler(workflow, name, meta, source_code, version)
     else:
         if handler.version != version:
-            _store_handler(handler, meta, source_code, version, False)
+            _update_handler(handler, meta, source_code, version)
         else:
             print("Handler [%s]: Not changed." % (name,))
 
-def _store_handler(handler, meta, source_code, version, create_new):
-    if create_new is True:
-        print("Handler [%s]: Creating." % (handler.handler_name,))
-    else:
-        print("Handler [%s]: Updating." % (handler.handler_name,))
+def _create_handler(workflow, name, meta, source_code, version):
+    print("Handler [%s]: Creating." % (name,))
+
+# TODO(dustin): Compile the code so as to test it.
+# TODO(dustin): We might also want to require "test" arguments and a test result, for unit-tests.
+
+    handler = mr.models.kv.handler.create(
+                workflow,
+                handler_name=name,
+                description=meta['description'],
+                argument_spec=meta['argument_spec'],
+                source_type=meta['source_type'],
+                source_code=source_code,
+                version=version,
+                handler_type=meta['handler_type'])
+
+    handler.save()
+
+    return handler
+
+def _update_handler(handler, meta, source_code, version):
+    print("Handler [%s]: Updating." % (handler.handler_name,))
 
 # TODO(dustin): Compile the code so as to test it.
 # TODO(dustin): We might also want to require "test" arguments and a test result, for unit-tests.
