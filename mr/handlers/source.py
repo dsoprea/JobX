@@ -4,8 +4,8 @@ import fnmatch
 import hashlib
 import json
 
-import mr.config.handler
 import mr.handlers.general
+import mr.models.kv.handler
 
 _logger = logging.getLogger(__name__)
 
@@ -33,85 +33,35 @@ class SourceAdapter(object):
         raise NotImplementedError()
 
 
-class FilesystemSourceAdapter(SourceAdapter):
+class KvSourceAdapter(SourceAdapter):
     """Retrieves sourcecode for handlers from the local filesystem."""
 
     def __init__(self, workflow):
-        if os.path.exists(mr.config.handler.SOURCE_PATH) is False:
-            raise EnvironmentError("Source path does not exist: [%s]" % 
-                                   (mr.config.handler.SOURCE_PATH,))
-
         self.__workflow = workflow
 
     def __enumerate_handlers(self):
-        pattern = mr.config.handler.SOURCE_FILENAME_PATTERN
-        source_path = mr.config.handler.SOURCE_PATH
-
-        _logger.debug("Handler source path: [%s]", source_path)
-
-        for filename in os.listdir(source_path):
-            if fnmatch.fnmatch(filename, pattern) is False:
-                continue
-
-            filepath = os.path.join(source_path, filename)
-
-            with open(filepath) as f:
-                source_code = f.read()
-
-            version = hashlib.sha1(source_code).hexdigest()
-
-            (name, _) = os.path.splitext(filename)
-
-            yield (name, version)
+        workflow_name = self.__workflow.workflow_name
+        handlers = mr.models.kv.handler.Handler.list(workflow_name)
+        for handler in handlers:
+            yield (handler.handler_name, handler.version)
 
     def list_handlers(self):
         return self.__enumerate_handlers()
 
     def get_handler(self, name):
-        replacements = {
-            'name': name
-        }
-
-        filename = mr.config.handler.SOURCE_FILENAME_TEMPLATE % \
-                   replacements
-
-        filepath = os.path.join(mr.config.handler.SOURCE_PATH, filename)
-
-# TODO: If we maintain a stamp file that has the hash and an mtime synced to 
-#       the handler file, we won't have to constantly recalculate the hash.
-        with open(filepath) as f:
-            source_code = f.read()
-
-        meta_filepath = filepath + \
-                        mr.config.handler.SOURCE_META_FILENAME_SUFFIX
-
-        with open(meta_filepath) as f:
-            meta = json.load(f)
+        handler = mr.models.kv.handler.get(self.__workflow, name)
 
         hd = mr.handlers.general.HANDLER_DEFINITION_CLS(
-                name=name, 
-                version=hashlib.sha1(source_code).hexdigest(), 
-                description=meta['description'], 
-                source_code=source_code, 
-                argument_spec=meta['argument_spec'], 
-                source_type=meta['source_type'])
-
-        self.__validate_handler(hd)
+                name=handler.handler_name,
+                version=handler.version,
+                description=handler.description,
+                source_code=handler.source_code,
+                argument_spec=handler.argument_spec,
+                source_type=handler.source_type,
+                cast_arguments=handler.cast_arguments)
 
         return hd
 
-    def __validate_handler(self, hd):
-        """Return a mr.handlers.general.HandlerFormatException if the fields 
-        aren't correct.
-        """
-# TODO(dustin): Finish.
-        pass
-
-    def get_handlers_state(self, handlers=None):
-        if handlers is None:
-            handlers = self.__enumerate_handlers()
-
-        states = [version for (name, version) in handlers]
-        _logger.debug("Assembled states from (%d) handlers.", len(states))
-
-        return hashlib.sha1(','.join(states)).hexdigest()
+    def get_handlers_state(self):
+        self.__workflow.refresh()
+        return self.__workflow.handlers_state

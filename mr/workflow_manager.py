@@ -19,7 +19,7 @@ class _WorkflowManager(object):
                              (workflow.workflow_name,))
 
 # TODO(dustin): Make these configurable (they implement an interface).
-        s = mr.handlers.source.FilesystemSourceAdapter(workflow)
+        s = mr.handlers.source.KvSourceAdapter(workflow)
         l = mr.handlers.library.KvLibraryAdapter(workflow)
 
         h = mr.handlers.general.Handlers(s, l)

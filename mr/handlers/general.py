@@ -8,7 +8,6 @@ import logging
 import collections
 import json
 
-import mr.config.handler
 import mr.models.kv.handler
 import mr.models.kv.workflow
 
@@ -67,7 +66,7 @@ class Handlers(object):
         source_handler_names_s = set([n for (n, v) in source_handlers])
 
         delta_handlers_s = source_handler_versions_s - stored_handler_versions_s
-        delta_handler_names_s = set([name for (n, v) in delta_handlers_s])
+        delta_handler_names_s = set([n for (n, v) in delta_handlers_s])
 
         new_handler_names_s = source_handler_names_s - stored_handler_names_s
         deleted_handler_names_s = stored_handler_names_s - source_handler_names_s
@@ -75,11 +74,11 @@ class Handlers(object):
 
         # Apply the changes.
 
-        self.__library.set_handlers_state(handler_state)
+        self.__library.set_handlers_state(source_state)
 
         _logger.info("Updating handlers: NEW=(%d) UPDATED=(%d) DELETED=(%d)",
                      len(new_handler_names_s), len(updated_handler_names_s),
-                     len(deleted_handler_names))
+                     len(deleted_handler_names_s))
 
         for new_handler_name in new_handler_names_s:
             try:
@@ -110,7 +109,10 @@ class Handlers(object):
         self.__compile_handlers()
 
     def __compile_handlers(self):
+        handler_count = 0
         for name, arg_names, version in self.__library.list_handlers():
+            handler_count += 1
+
             if name in self.__compiled:
                 continue
 
@@ -121,14 +123,17 @@ class Handlers(object):
                                         name, 
                                         arg_names, 
                                         hd.source_code)
-        else:
-            _logger.warning("No code has to be recompiled, even though the "
-                            "handlers were supposed to have changed.")
+        
+        if handler_count == 0:
+            _logger.warning("No handlers were presented by the library. No code was compiled.")
 
     def __compile(self, name, arg_names, code):
-        name = "(lambda compile)"
+        name = "(lambda handler '%s')" % (name,)
      
-        # Needs to start with a letter.
+        # Needs to start with a letter. We don't want to use the actual name, 
+        # because it would be an arbitrary choice and would imply that the 
+        # source-code is written that way. If this is a mechanical process, we 
+        # wish it to be represented as such.
         id_ = 'a' + hashlib.sha1(str(random.random())).hexdigest()
         code = "def " + id_ + "(" + ', '.join(arg_names) + "):\n" + \
                '\n'.join(('  ' + line) for line in code.replace('\r', '').split('\n')) + '\n'

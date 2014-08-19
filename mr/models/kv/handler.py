@@ -47,6 +47,34 @@ class Handler(mr.models.kv.model.Model):
     def presave(self):
         self.__update_version()
 
+    def postsave(self):
+        cls = self.__class__
+
+        _logger.info("Updating workflow with new handlers state.")
+
+        def calculate_state():
+            versions = (str(h.version) 
+                        for h 
+                        in cls.list(self.__workflow.workflow_name))
+
+            hash_ = hashlib.sha1(','.join(versions)).hexdigest()
+            _logger.debug("Calculated handlers-state: [%s]", hash_)
+
+            return hash_
+
+        def get_cb():
+            self.__workflow.refresh()
+            return self.__workflow
+
+        def set_cb(obj):
+            obj.handlers_state = calculate_state()
+
+        self.__workflow.__class__.atomic_update(get_cb, set_cb)
+# TODO(dustin): Verify that the workflow object that we have reflects the 
+#               latest state.
+        _logger.debug("Workflow handlers state is now: [%s]", 
+                      self.__workflow.handlers_state)
+
     def set_workflow(self, workflow):
         self.__workflow = workflow
 

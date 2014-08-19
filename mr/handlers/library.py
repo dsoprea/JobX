@@ -51,75 +51,46 @@ class KvLibraryAdapter(LibraryAdapter):
 
     def __init__(self, workflow):
         self.__workflow = workflow
+        self.__handlers = {}
+        self.__state = None
 
     def list_handlers(self):
         """Enumerate the handlers as (name, version)."""
 
-        for h in mr.models.kv.handler.Handler.list(
-                    self.__workflow.workflow_name):
-            yield (
-                h.handler_name, 
-                h.version
-            )
+        return ((name,
+                 [name for (name, cls_) in handler_info.argument_spec],
+                 handler_info.version)
+                for (name, handler_info)
+                in self.__handlers.items())
 
     def get_handler(self, handler_name):
         """Return a handler-definition object."""
 
-# TODO(dustin): We need to keep a local dictionary. IT's faster, and the reason 
-#               that we have versioning.
-        handler = mr.models.kv.handler.get(self.__workflow, handler_name)
-
-        return mr.handlers.general.HANDLER_DEFINITION_CLS(
-                name=handler.handler_name,
-                version=handler.version,
-                description=handler.description,
-                source_code=handler.source_code,
-                argument_spec=handler.argument_spec,
-                source_type=handler.source_type,
-                cast_arguments=handler.cast_arguments)
+        return self.__handlers[handler_name]
 
     def create_handler(self, hd):
         """Store the given new handler."""
 
-        h = mr.models.kv.handler.Handler(
-                workflow=self.__workflow, 
-                name=hd.name, 
-                description=hd.description,
-                source_code=hd.source_code)
-
-        h.save()
+        self.__handlers[hd.name] = hd
 
     def update_handler(self, hd):
         """Update the given existing handler."""
 
-        h = mr.models.kv.handler.get(self.__workflow, hd.name)
-
-        h.description = hd.description
-        h.source_code = hd.source_code
-        h.argument_spec = hd.argument_spec
-        h.source_type = hd.source_type
-
-        h.save()
+        self.__handlers[hd.name] = hd
 
     def delete_handler(self, handler_name):
         """Delete the given handler."""
 
-        h = mr.models.kv.handler.get(self.__workflow, handler_name)
-        h.delete(self.__workflow, handler_name)
+        del self.__handlers[handler_name]
 
     def set_handlers_state(self, state):
         """Receive a unique state string that'll change when the sourcecode 
         does.
         """
 
-        self.__workflow.handlers_state = state
-        self.__workflow.save()
+        self.__state = state
 
     def get_handlers_state(self):
         """Returns the current state string."""
 
-        # Make sure that we're in sync, since any host in the cluster can 
-        # affect this.
-        self.__workflow.refresh()
-
-        return self.__workflow.handlers_state
+        return self.__state
