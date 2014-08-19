@@ -239,6 +239,7 @@ class _StepProcessor(object):
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
 
+        request = message_parameters.request
         step = message_parameters.step
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
@@ -256,6 +257,8 @@ class _StepProcessor(object):
                                 step.map_handler_name, 
                                 message_parameters.arguments)
 
+            _logger.debug("Mapper result: [%s]", handler_result)
+
             # Manage downstream steps that were mapped to (the handler was a 
             # generator).
 
@@ -272,22 +275,21 @@ class _StepProcessor(object):
                 # The step didn't yield, so it must've done some work and 
                 # returned a result. Store it.
 
-                # Post the result.
-
-                mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                        workflow, 
-                        invocation.parent_invocation_id)
-
-                meta = {
-                    'result': handler_result,
-                }
-
-                mst.update_child(invocation.invocation_id, meta=meta)
-
-                # Decrement the "waiting" counter on the parent, or notify that 
-                # the job is done.
-
                 if invocation.parent_invocation_id is not None:
+                    # We were mapped-to from another invocation.
+
+                    mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
+                            workflow, 
+                            invocation.parent_invocation_id)
+
+                    meta = {
+                        'result': handler_result,
+                    }
+
+                    mst.update_child(invocation.invocation_id, meta=meta)
+
+                    # Decrement the "waiting" counter on the parent.
+
                     parent_invocation = self.__decrement_parent_invocation(
                                             invocation)
 
@@ -297,11 +299,15 @@ class _StepProcessor(object):
                             message_parameters, 
                             parent_invocation)
                 else:
-# TODO(dustin): We don't have a parent, and just finished performing an action 
-#               (a non-mapping step). This was a request that was fulfilled 
-#               immediately. Flag the root invocation (or job?) as complete.
-# TODO(dustin): Finish.
-                    raise NotImplementedError()
+                    # We were called directly from the initial-step of the 
+                    # request. There is no tree of results. There was no 
+                    # mapping. Post the one result to the request.
+
+                    _logger.debug("Storing unmapped handler result to "
+                                  "request: [%s]", handler_result)
+
+                    request.result = handler_result
+                    request.save()
         except:
 # TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
 # TODO(dustin): We might have to remove the chain of invocations, on error.

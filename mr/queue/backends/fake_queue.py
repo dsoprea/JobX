@@ -19,6 +19,7 @@ _SPOOL_PATH = os.environ['MR_FAKE_QUEUE_SPOOL_PATH']
 
 _FAILED_FILEPATH_TEMPLATE = '%(filepath)s.failed'
 _FAILED_MESSAGE_FILEPATH_TEMPLATE = '%(filepath)s.failed.message'
+_SUCCESS_FILEPATH_TEMPLATE = '%(filepath)s.success'
 _DELAY_AFTER_JOB_HIT = 1
 _DELAY_AFTER_JOB_MISS = 2
 _SPOOLED_MESSAGE_PATTERN = '*.spooled'
@@ -127,6 +128,13 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
 
         self.__fmh.process_message(encoded_message)
 
+        replacements = {
+            'filepath': filepath,
+        }
+
+        new_filepath = _SUCCESS_FILEPATH_TEMPLATE % replacements
+        os.rename(filepath, new_filepath)
+
     def __mark_error(self, filename, message):
         old_filepath = os.path.join(_SPOOL_PATH, filename)
         
@@ -135,7 +143,6 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
         }
         
         new_filepath = _FAILED_FILEPATH_TEMPLATE % replacements
-
         os.rename(old_filepath, new_filepath)
 
         message_filepath = _FAILED_MESSAGE_FILEPATH_TEMPLATE % replacements
@@ -153,6 +160,7 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
                 message_names = load_messages()
 
             if message_names:
+                _logger.debug("Processing first spooled item.")
                 filename = message_names[0]
 
                 try:
@@ -163,7 +171,9 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
                     message = traceback.format_exc()
                     self.__mark_error(filename, message)
 
+                _logger.debug("Removing first spool item.")
                 del message_names[0]
+
                 time.sleep(_DELAY_AFTER_JOB_HIT)
             else:
                 time.sleep(_DELAY_AFTER_JOB_MISS)

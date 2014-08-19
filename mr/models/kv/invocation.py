@@ -9,7 +9,7 @@ class Invocation(mr.models.kv.model.Model):
     key_field = 'invocation_id'
 
     invocation_id = mr.models.kv.model.Field()
-    parent_invocation_id = mr.models.kv.model.Field(is_required=False, default_value='')
+    parent_invocation_id = mr.models.kv.model.Field(is_required=False)
     step_name = mr.models.kv.model.Field()
 
     # For a mapping, this describes arguments. For a reduction or action step, 
@@ -23,10 +23,6 @@ class Invocation(mr.models.kv.model.Model):
     # This will be assigned at the same time as mapped_count, and decremented 
     # as downstream children of an invoked step are finished.
     mapped_waiting = mr.models.kv.model.Field(is_required=False)
-
-    # Collects the result from a step, whether it was mapped and then reduced, 
-    # or whether it just performed work and returned.
-    result = mr.models.kv.model.Field(is_required=False)
 
     # Contains scalar exception traceback.
     error = mr.models.kv.model.Field(is_required=False)

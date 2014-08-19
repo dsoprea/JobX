@@ -13,6 +13,10 @@ class Request(mr.models.kv.model.Model):
     invocation_id = mr.models.kv.model.Field()
     context = mr.models.kv.model.Field(is_required=False)
 
+    # Collects the result from a step, whether it was mapped and then reduced, 
+    # or whether it just performed work and returned.
+    result = mr.models.kv.model.Field(is_required=False)
+
     def __init__(self, workflow=None, *args, **kwargs):
         super(Request, self).__init__(*args, **kwargs)
 

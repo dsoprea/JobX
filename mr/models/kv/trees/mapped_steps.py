@@ -6,6 +6,8 @@ class MappedStepsTree(mr.models.kv.trees.tree.Tree):
     tree_class = 'mapped_steps'
 
     def __init__(self, workflow, parent_invocation):
+        assert parent_invocation is not None
+
         self.__workflow = workflow
         self.__parent_invocation = parent_invocation
 
