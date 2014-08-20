@@ -5,6 +5,8 @@ import time
 import os
 import glob
 import traceback
+import random
+import pprint
 
 import mr.config.fake_queue
 import mr.queue.queue_factory
@@ -12,18 +14,34 @@ import mr.queue.queue_consumer
 import mr.queue.queue_producer
 import mr.queue.queue_control
 import mr.queue.message_handler
+import mr.queue.queue_message
 
 _logger = logging.getLogger(__name__)
 
-_SPOOL_PATH = os.environ['MR_FAKE_QUEUE_SPOOL_PATH']
+_SPOOL_PATH = os.path.abspath(os.environ['MR_FAKE_QUEUE_SPOOL_PATH'])
+_DO_WRITES = bool(int(os.environ.get('MR_FAKE_QUEUE_SPOOL_WRITE', '1')))
 
-_FAILED_FILEPATH_TEMPLATE = '%(filepath)s.failed'
-_FAILED_MESSAGE_FILEPATH_TEMPLATE = '%(filepath)s.failed.message'
-_SUCCESS_FILEPATH_TEMPLATE = '%(filepath)s.success'
+_FAILED_FILENAME_TEMPLATE = '%(filepath)s.failed'
+_FAILED_MESSAGE_FILENAME_TEMPLATE = '%(filepath)s.failed.message'
+_SUCCESS_FILENAME_TEMPLATE = '%(filepath)s.success'
 _DELAY_AFTER_JOB_HIT = 1
 _DELAY_AFTER_JOB_MISS = 2
 _SPOOLED_MESSAGE_PATTERN = '*.spooled'
+_SPOOLED_MESSAGE_FILENAME_TEMPLATE = '%(unique)s.spooled.new'
 
+def dump_encoded(encoded):
+    qmp = mr.queue.queue_message.get_queue_message_processor()
+    (job_class, format_version, funneled_data) = qmp.decode(encoded)
+
+    # We won't actually print the inflated parameters. It should already be in 
+    # the debug logging.
+    qmf = mr.queue.queue_message.get_queue_message_funnel()
+    message_parameters = qmf.inflate(format_version, funneled_data)
+
+    print('')
+    print("Message contents:")
+    print('')
+    print('  %s' % (funneled_data,))
 
 class _FakeMessageHandler(mr.queue.message_handler.MessageHandler):
     pass
@@ -64,16 +82,53 @@ class _FakeQueueProducer(mr.queue.queue_producer.QueueProducer):
     def is_alive(self):
         return True
 
-    def __print_chunks(self, data, chunk_size=80):
+    def __get_chunks(self, data, chunk_size=80):
         for offset in range(0, len(data), chunk_size):
-            print(data[offset:offset + chunk_size])
+            yield data[offset:offset + chunk_size]
+
+    def __dump_chunks(self, topic, *args):
+        if _DO_WRITES is True:
+            unique = ('%s-%012d-%5d' % 
+                      (topic, 
+                       int(time.time()), 
+                       random.randrange(11111, 55555)))
+
+            replacements = {
+                'unique': unique,
+            }
+            
+            filename = _SPOOLED_MESSAGE_FILENAME_TEMPLATE % replacements
+            filepath = os.path.join(_SPOOL_PATH, filename)
+            _logger.debug("Writing message to spool: [%s]", filepath)
+
+            print('')
+            print('Spool-encoded message:')
+            print('')
+
+            with open(filepath, 'w') as f:
+                for chunk in self.__get_chunks(*args):
+                    f.write(chunk)
+                    print("  " + chunk)
+
+                f.write('')
+
+            print('')
+
+            print("Spooled-message unique name:")
+            print('')
+            print('  %s' % (unique,))
+        else:
+            for chunk in self.__get_chunks(*args):
+                print(chunk)
 
     def push_one_raw(self, topic, raw_message):
         _logger.debug("Pushing message to topic: [%s]", topic)
 
         print("PUSH\n  TOPIC: [%s]\n  LEN: (%d)" % (topic, len(raw_message)))
         print('')
-        self.__print_chunks(base64.b64encode(raw_message))
+        dump_encoded(raw_message)
+        print('')
+        self.__dump_chunks(topic, base64.b64encode(raw_message))
         print('')
 
     def push_many_raw(self, topic, raw_message_list):
@@ -87,7 +142,7 @@ class _FakeQueueProducer(mr.queue.queue_producer.QueueProducer):
         for (i, raw_message) in enumerate(raw_message_list):
             print('%d:' % (i,))
             print('')
-            self.__print_chunks(base64.b64encode(raw_message))
+            self.__dump_chunks(topic, base64.b64encode(raw_message))
             print('')
 
 
@@ -132,7 +187,7 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
             'filepath': filepath,
         }
 
-        new_filepath = _SUCCESS_FILEPATH_TEMPLATE % replacements
+        new_filepath = _SUCCESS_FILENAME_TEMPLATE % replacements
         os.rename(filepath, new_filepath)
 
     def __mark_error(self, filename, message):
@@ -142,10 +197,10 @@ class _FakeQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
             'filepath': old_filepath,
         }
         
-        new_filepath = _FAILED_FILEPATH_TEMPLATE % replacements
+        new_filepath = _FAILED_FILENAME_TEMPLATE % replacements
         os.rename(old_filepath, new_filepath)
 
-        message_filepath = _FAILED_MESSAGE_FILEPATH_TEMPLATE % replacements
+        message_filepath = _FAILED_MESSAGE_FILENAME_TEMPLATE % replacements
 
         with open(message_filepath, 'w') as f:
             f.write(message)
