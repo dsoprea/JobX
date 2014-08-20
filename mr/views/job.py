@@ -58,7 +58,8 @@ def job_submit(workflow_name, job_name):
     }
 
     invocation = mr.models.kv.invocation.Invocation(
-                    workflow=workflow,
+                    invocation_id=None,
+                    workflow_name=workflow_name,
                     step_name=step.step_name,
                     arguments=dict(arguments),
                     direction=mr.constants.D_MAP)
@@ -66,7 +67,8 @@ def job_submit(workflow_name, job_name):
     invocation.save()
 
     request = mr.models.kv.request.Request(
-                workflow=workflow,
+                request_id=None,
+                workflow_name=workflow_name,
                 job_name=job.job_name, 
                 invocation_id=invocation.invocation_id,
                 context=context)

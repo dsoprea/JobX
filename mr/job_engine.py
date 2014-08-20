@@ -111,15 +111,17 @@ class _StepProcessor(object):
                             workflow, 
                             next_step.map_handler_name)
         
-        next_arguments = next_handler.cast_arguments(
-                            next_arguments)
+        next_arguments = dict(next_handler.cast_arguments(
+                                            next_arguments))
 
         # The next invocation will have this [mapping] step as a parent.
         mapped_invocation = mr.models.kv.invocation.Invocation(
-                            parent_invocation_id=invocation.invocation_id,
-                            step_name=next_step.step_name,
-                            arguments=next_arguments,
-                            direction=mr.constants.D_MAP)
+                                invocation_id=None,
+                                workflow_name=workflow.workflow_name,
+                                parent_invocation_id=invocation.invocation_id,
+                                step_name=next_step.step_name,
+                                arguments=next_arguments,
+                                direction=mr.constants.D_MAP)
 
         mapped_invocation.save()
 
@@ -179,11 +181,13 @@ class _StepProcessor(object):
 #        _get_pusher().queue_reduce_step_from_parameters(reduce_parameters)
 
     def __map_downstream(self, handler_name, handler_result_gen,
-                                       workflow, invocation, 
-                                       message_parameters):
+                         workflow, invocation, message_parameters):
         """A mapping step has completed and has mapped into one or more 
         downstream steps. Queue the downstream steps to be handled and tracked.
         """
+
+        assert invocation.mapped_count is None
+        assert invocation.mapped_waiting is None
 
         # The handler must first yield the number of steps that will be
         # mapped-to.
@@ -194,6 +198,9 @@ class _StepProcessor(object):
             _logger.error("Handler returned an empty generator. "
                           "Weird: [%s]", handler_name)
             raise
+
+        _logger.debug("Invocation [%s] has mapped (%d) steps.", 
+                      invocation.invocation_id, step_count)
 
         if issubclass(step_count.__class__, int) is False:
             raise ValueError("We expect an integer step count from "
@@ -221,7 +228,10 @@ class _StepProcessor(object):
             mapped_step = mr.models.kv.step.get(
                             workflow, 
                             mapped_step_name)
-
+# TODO(dustin): !! We're not guaranteed an order when retrieving this. 
+#               Hopefully, we can refactor to use in-order queues. Otherwise, 
+#               we'll have to store the indices, which we won't be able to 
+#               reassemble the data with efficiently.
             self.__queue_map_step(
                     mst,
                     mapped_step, 
@@ -257,7 +267,8 @@ class _StepProcessor(object):
                                 step.map_handler_name, 
                                 message_parameters.arguments)
 
-            _logger.debug("Mapper result: [%s]", handler_result)
+            _logger.debug("Mapper result [%s]: [%s]", 
+                          handler_result.__class__.__name__, handler_result)
 
             # Manage downstream steps that were mapped to (the handler was a 
             # generator).
@@ -266,7 +277,7 @@ class _StepProcessor(object):
                handler_result.__class__, 
                types.GeneratorType) is True:
                 self.__map_downstream(
-                    handler_name, 
+                    step.map_handler_name, 
                     handler_result,
                     workflow, 
                     invocation, 
@@ -277,6 +288,9 @@ class _StepProcessor(object):
 
                 if invocation.parent_invocation_id is not None:
                     # We were mapped-to from another invocation.
+
+                    _logger.debug("Storing result to parent-invocation: [%s]", 
+                                  invocation.parent_invocation_id)
 
                     mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
                             workflow, 

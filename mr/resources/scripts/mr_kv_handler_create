@@ -41,7 +41,7 @@ source_code = sys.stdin.read().strip()
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 
 s = mr.models.kv.handler.Handler(
-        workflow_name=workflow_name, 
+        workflow_name=args.workflow_name, 
         handler_name=args.name, 
         description=args.description,
         argument_spec=args.argument,
