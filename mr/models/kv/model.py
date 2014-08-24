@@ -84,7 +84,7 @@ class Model(mr.models.kv.common.CommonKv):
         if data[cls.key_field] is None:
             key = cls.make_opaque()
             _logger.debug("Model [%s] was not loaded with a key. Generating"
-                          "key: [%s]", cls.entity_class, cls.key_field, key)
+                          "key: [%s]", cls.entity_class, key)
 
             data[cls.key_field] = key
 

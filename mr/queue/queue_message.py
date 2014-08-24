@@ -17,6 +17,7 @@ QueueMessageV1 = collections.namedtuple(
                     'QueueMessageV1', 
                     ['workflow_name',
                      'request_id', 
+                     'invocation_id',
                      'step_name', 
                      'arguments'])
 
@@ -109,13 +110,18 @@ class _QueueMessageFunnel(object):
                 mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS) is True
 
         workflow = message_parameters.workflow
+        distilled_arguments = dict(message_parameters.arguments) \
+                              if message_parameters.arguments is not None \
+                              else None
 
         # This implements whatever the current message format is.
+
         return QueueMessageV1(
                 workflow_name=workflow.workflow_name,
                 request_id=message_parameters.request.request_id,
+                invocation_id=message_parameters.invocation.invocation_id,
                 step_name=message_parameters.step.step_name,
-                arguments=dict(message_parameters.arguments))
+                arguments=distilled_arguments)
 
     def inflate(self, format_version, deflated):
         """Reconstruct the battery of models and arguments that describes the 
@@ -123,16 +129,17 @@ class _QueueMessageFunnel(object):
         """
 
         if format_version == _QDF_1:
-            (workflow_name, request_id, step_name, arguments) = deflated
+            (workflow_name, request_id, invocation_id, step_name, arguments) = deflated
 
             wm = mr.workflow_manager.get_wm()
             managed_workflow = wm.get(workflow_name)
             workflow = managed_workflow.workflow
 
             request = mr.models.kv.request.get(workflow, request_id)
+
             invocation = mr.models.kv.invocation.get(
                             workflow, 
-                            request.invocation_id)
+                            invocation_id)
 
             job = mr.models.kv.job.get(workflow, request.job_name)
             step = mr.models.kv.step.get(workflow, step_name)
@@ -150,7 +157,7 @@ class _QueueMessageFunnel(object):
 
         border = '-' * 79
 
-        _logger.debug("Job has been inflated:\n"
+        _logger.debug("Message has been inflated:\n"
                       "%s\n"
                       "WORKFLOW:\n  %s\n"
                       "INVOCATION:\n  %s\n"

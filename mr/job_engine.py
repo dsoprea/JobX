@@ -3,11 +3,13 @@ import logging
 import functools
 import types
 import traceback
+import json
 
 import gevent.pool
 
 import etcd.exceptions
 
+import mr.config
 import mr.config.queue
 import mr.models.kv.job
 import mr.models.kv.step
@@ -44,19 +46,7 @@ class _QueuePusher(object):
     def queue_initial_map_step_from_parameters(self, message_parameters):
         return self.queue_map_step_from_parameters(message_parameters)
 
-    def queue_reduce_step_from_parameters(self, message_parameters):
-        replacements = {
-            'workflow_name': message_parameters.workflow.workflow_name,
-        }
-
-        topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements
-
-        self.__q.producer.push_one(
-            topic, 
-            mr.constants.D_REDUCE, 
-            message_parameters)
-
-    def queue_initial_reduce_step_from_parameters(self, message_parameters, 
+    def queue_reduce_step_from_parameters(self, message_parameters, 
                                                   parent_invocation):
         """We're reflecting (switch directions from mapping to reduction). The 
         current step is an action step (no mappings were done). The next 
@@ -64,7 +54,13 @@ class _QueuePusher(object):
         the next.
         """
 
+        _logger.debug("Queueing reduce step for parent invocation: %s", 
+                      parent_invocation)
+
         reduce_invocation = mr.models.kv.invocation.Invocation(
+                                invocation_id=None,
+                                workflow_name=\
+                                    message_parameters.workflow.workflow_name,
                                 parent_invocation_id=\
                                     parent_invocation.invocation_id,
                                 step_name=parent_invocation.step_name,
@@ -81,7 +77,16 @@ class _QueuePusher(object):
             handler=message_parameters.step.reduce_handler_name,
             arguments=None)
 
-        return self.queue_reduce_step_from_parameters(reduce_parameters)
+        replacements = {
+            'workflow_name': reduce_parameters.workflow.workflow_name,
+        }
+
+        topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements
+
+        self.__q.producer.push_one(
+            topic, 
+            mr.constants.D_REDUCE, 
+            reduce_parameters)
 
 _pusher = None
 def _get_pusher():
@@ -123,6 +128,9 @@ class _StepProcessor(object):
                                 arguments=next_arguments,
                                 direction=mr.constants.D_MAP)
 
+# TODO(dustin): Debugging.
+        assert mapped_invocation.parent_invocation_id is not None
+
         mapped_invocation.save()
 
         _logger.debug("Mapped invocation:\n%s =>\n%s",
@@ -140,45 +148,6 @@ class _StepProcessor(object):
             arguments=next_arguments)
 
         _get_pusher().queue_map_step_from_parameters(mapped_parameters)
-
-#    def __queue_reduce_step(self, next_step, next_arguments, original_parameters):
-#        request = original_parameters.request
-#        workflow = original_parameters.workflow
-#        job = original_parameters.job
-#        invocation = original_parameters.invocation
-#
-#        _logger.debug("Queueing mapped step:\n%s =>\n%s",
-#                      invocation, next_step)
-#
-#        next_handler = mr.models.kv.handler.get(
-#                            workflow, 
-#                            next_step.map_handler_name)
-#        
-#        next_arguments = next_handler.cast_arguments(
-#                            next_arguments)
-#
-#        # The next invocation will have this [mapping] step as a parent.
-#        mapped_invocation = mr.models.kv.invocation.Invocation(
-#                            parent_invocation_id=invocation.invocation_id,
-#                            step_name=next_step.step_name,
-#                            arguments=next_arguments,
-#                            direction=mr.constants.D_MAP)
-#
-#        mapped_invocation.save()
-#
-#        _logger.debug("Mapped invocation:\n%s =>\n%s",
-#                      invocation, mapped_invocation)
-#
-#        reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-#            workflow=workflow,
-#            invocation=mapped_invocation,
-#            request=request,
-#            job=job,
-#            step=next_step,
-#            handler=next_handler,
-#            arguments=next_arguments)
-#
-#        _get_pusher().queue_reduce_step_from_parameters(reduce_parameters)
 
     def __map_downstream(self, handler_name, handler_result_gen,
                          workflow, invocation, message_parameters):
@@ -289,12 +258,16 @@ class _StepProcessor(object):
                 if invocation.parent_invocation_id is not None:
                     # We were mapped-to from another invocation.
 
-                    _logger.debug("Storing result to parent-invocation: [%s]", 
+                    _logger.debug("Storing result to parent-invocation with ID: [%s]", 
                                   invocation.parent_invocation_id)
+
+                    parent_invocation = mr.models.kv.invocation.get(
+                                            workflow, 
+                                            invocation.parent_invocation_id)
 
                     mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
                             workflow, 
-                            invocation.parent_invocation_id)
+                            parent_invocation)
 
                     meta = {
                         'result': handler_result,
@@ -305,11 +278,18 @@ class _StepProcessor(object):
                     # Decrement the "waiting" counter on the parent.
 
                     parent_invocation = self.__decrement_parent_invocation(
+                                            workflow,
                                             invocation)
 
                     if parent_invocation.mapped_waiting <= 0:
+                        _logger.debug("REFLECTION: Handler for MAPPING "
+                                      "returned a result, and all results "
+                                      "have been rendered for parent. "
+                                      "Reducing for parent [%s].", 
+                                      parent_invocation.invocation_id)
+
                         pusher = _get_pusher()
-                        pusher.queue_initial_reduce_step_from_parameters(
+                        pusher.queue_reduce_step_from_parameters(
                             message_parameters, 
                             parent_invocation)
                 else:
@@ -331,10 +311,10 @@ class _StepProcessor(object):
 
             raise
 
-    def __decrement_parent_invocation(self, invocation):
+    def __decrement_parent_invocation(self, workflow, invocation):
         def get_cb():
             return mr.models.kv.invocation.get(
-                    invocation.workflow, 
+                    workflow, 
                     invocation.parent_invocation_id)
 
         def set_cb(obj):
@@ -344,26 +324,62 @@ class _StepProcessor(object):
 
     def handle_reduce(self, message_parameters):
         """Corresponds to steps received with a type of mr.constants.D_REDUCE.
+
+        As we work our way down from the request/job/original-step to 
+        successive mappings, we link them by way of the parent_invocation_id.
+        When we're working our way up through reduction, the 
+        parent_invocation_id of each reduction invocation points to the 
+        invocation record that we're reducing. We'll then continue to queue 
+        successive invocation for the parents of parents, until we make it all
+        of the way to the original step (which will have no parent).
         """
 
         step = message_parameters.step
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
+        request = message_parameters.request
 
         wm = mr.workflow_manager.get_wm()
         managed_workflow = wm.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
 
-        _logger.debug("Processing REDUCE: %s", invocation)
+        # The parent of the current invocation is the invocation that had all 
+        # of the mappings to be reduced.
+
+        parent_invocation = mr.models.kv.invocation.get(
+                                workflow, 
+                                invocation.parent_invocation_id)
+
+        _logger.debug("Processing REDUCE [%s] of original invocation [%s].", 
+                      invocation, parent_invocation)
 
         try:
-            # Call the handler.
+            # Call the handler with a generator of all of the results to be 
+            # reduced.
 
             mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
                     workflow, 
-                    invocation.parent_invocation_id)
+                    parent_invocation)
 
-            results_gen = mst.list_entities()
+            children_gen = mst.list_entities()
+
+            if mr.config.IS_DEBUG is True:
+                children_gen = list(children_gen)
+                
+                print('')
+                for (i, (child_invocation, encoded_meta)) \
+                    in enumerate(children_gen):
+                        meta = json.loads(encoded_meta)
+                        print("Result (%d): [%s] %s" % 
+                              (i, child_invocation.invocation_id, 
+                               meta['result']))
+
+                print('')
+
+# TODO(dustin): Our mechanics still aren't guaranteeing the order of the results.
+            results_gen = (json.loads(encoded_meta)['result']
+                           for (child_invocation, encoded_meta) 
+                           in children_gen)
 
             arguments = {
                 'results': results_gen,
@@ -373,36 +389,52 @@ class _StepProcessor(object):
                                 step.reduce_handler_name, 
                                 arguments)
 
-            # Post the result. This is where the failure will be if the result 
-            # isn't a primitive or, otherwise, not encodable.
+            _logger.debug("Handler [%s] reduction [%s] result: [%s]", 
+                          step.reduce_handler_name, invocation.invocation_id, 
+                          handler_result)
 
-            mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                    workflow, 
-                    invocation.parent_invocation_id)
+            if parent_invocation.parent_invocation_id is not None:
+                parent_parent_invocation = mr.models.kv.invocation.get(
+                                            workflow, 
+                                            parent_invocation.parent_invocation_id)
 
-            meta = {
-                'result': handler_result,
-            }
+                # Store the result from the reduction of mapped steps of our 
+                # parent, to *its* parent.
 
-            mst.update_child(invocation.invocation_id, meta=meta)
+                mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
+                        workflow, 
+                        parent_parent_invocation)
 
-            # Decrement the "waiting" counter on the parent, or notify that 
-            # the job is done.
+                meta = {
+                    'result': handler_result,
+                }
 
-            if invocation.parent_invocation_id is not None:
-                parent_invocation = self.__decrement_parent_invocation(
-                                        invocation)
+                mst.update_child(parent_invocation.invocation_id, meta=meta)
 
-                if parent_invocation.mapped_waiting <= 0:
-                    _get_pusher().queue_initial_reduce_step_from_parameters(
+                # Decrement the "waiting" counter on the parent, or notify that 
+                # the job is done.
+
+                self.__decrement_parent_invocation(
+                    workflow,
+                    parent_invocation)
+
+                if parent_parent_invocation.mapped_waiting <= 0:
+                    _logger.debug("Handler for REDUCTION returned a result, "
+                                  "and all results have been rendered for "
+                                  "parent-parent. Reducing for parent [%s].", 
+                                  parent_invocation.invocation_id)
+
+                    _get_pusher().queue_reduce_step_from_parameters(
                         message_parameters, 
-                        parent_invocation)
+                        parent_parent_invocation)
             else:
-# TODO(dustin): We don't have a parent, and just finished performing an action 
-#               (a non-mapping step). This was a request that was fulfilled 
-#               immediately. Flag the root invocation (or job?) as complete.
-# TODO(dustin): Finish.
-                raise NotImplementedError()
+                # We've reduced our way back up to the original request.
+
+                _logger.debug("Storing final reduction result to request: "
+                              "[%s]", handler_result)
+
+                request.result = handler_result
+                request.save()
         except:
 # TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
