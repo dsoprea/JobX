@@ -85,6 +85,17 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         for child in response.node.children:
             yield child.key[len(root_key) + 1:]
 
+    def wait_for_node_change(self, identity):
+        """Wait for a change to exactly one node (not recursive)."""
+
+        key = self.__class__.flatten_identity(identity)
+        response = _etcd.node.wait(key)
+
+        return (
+            response.node.modified_index,
+            response.node.value
+        )
+
     @classmethod
     def flatten_identity(cls, identity):
         """Derive a key from the identity string. It can either be a flat 

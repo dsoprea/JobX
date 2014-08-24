@@ -284,8 +284,6 @@ class Model(mr.models.kv.common.CommonKv):
         obj = cls.__build_from_data(key, data)
         cls.__apply_attributes(obj, attributes)
 
-        assert obj.is_stored is True
-
         return obj
 
     @classmethod
@@ -358,6 +356,36 @@ class Model(mr.models.kv.common.CommonKv):
         key = cls.key_from_identity(parent, identity)
         
         (state, value) = _dl.get(key)
+
+        return (
+            {
+                'state': state, 
+            },
+            mr.config.kv.DECODER(value)
+        )
+
+    def wait_for_change(self):
+        cls = self.__class__
+
+        parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
+        identity = self.get_identity()
+        key = getattr(self, cls.key_field)
+
+        _logger.debug("Waiting on entity [%s] with parent [%s]: [%s]",
+                      cls.entity_class, parent, identity)
+
+        (attributes, data) = cls.__wait_encoded(parent, identity)
+
+        obj = cls.__build_from_data(key, data)
+        cls.__apply_attributes(obj, attributes)
+
+        return obj
+
+    @classmethod
+    def __wait_encoded(cls, parent, identity):
+        key = cls.key_from_identity(parent, identity)
+        
+        (state, value) = _dl.wait_for_node_change(key)
 
         return (
             {

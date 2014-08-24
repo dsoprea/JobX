@@ -460,12 +460,16 @@ class _RequestReceiver(object):
         pusher.queue_initial_map_step_from_parameters(message_parameters)
 
     def __block_for_result(self, message_parameters):
-# TODO(dustin): Finish.
-# TODO(dustin): Come back to this once this is necessary.
+        request = message_parameters.request
+
+        _logger.debug("Blocking on result for request: [%s]", 
+                      request.request_id)
+
+        r = request.wait_for_change()
 
         return { 
-            'request_id': message_parameters.request.request_id,
-            'placeholder': '(should block for result)',
+            'request_id': request.request_id,
+            'result': r.result,
         }
 
     def process_request(self, message_parameters):
