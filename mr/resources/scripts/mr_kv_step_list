@@ -1,0 +1,51 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.step
+
+description = "List step entities for a workflow"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+steps = mr.models.kv.step.Step.list(workflow.workflow_name)
+steps = list(steps)
+
+print("By step:")
+print('')
+
+for step in (step for step in sorted(steps, key=lambda s: s.step_name)):
+    print('  %s: D=[%s] M=[%s] R=[%s]' % 
+          (step.step_name, step.description, step.map_handler_name, 
+           step.reduce_handler_name))
+
+print('')
+print("By mapper:")
+print('')
+
+for step in (step for step in sorted(steps, key=lambda s: s.map_handler_name)):
+    print('  %s: S=[%s] R=[%s]' % 
+          (step.map_handler_name, step.step_name, step.reduce_handler_name))
+
+print('')
+print("By reducer:")
+print('')
+
+for step in (step for step in sorted(steps, key=lambda s: s.reduce_handler_name)):
+    print('  %s: S=[%s] M=[%s]' % 
+          (step.reduce_handler_name, step.step_name, step.map_handler_name))
+
+print('')

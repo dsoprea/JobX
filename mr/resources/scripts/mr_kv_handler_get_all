@@ -12,7 +12,7 @@ import mr.config.log
 import mr.models.kv.workflow
 import mr.models.kv.handler
 
-description = "Get all steps entities for a workflow"
+description = "Get all handlers entities for a workflow"
 
 parser = argparse.ArgumentParser(description=description)
 
