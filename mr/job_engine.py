@@ -16,6 +16,7 @@ import mr.models.kv.step
 import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.models.kv.trees.mapped_steps
+import mr.models.kv.trees.invocations
 import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.shared_types
@@ -47,7 +48,7 @@ class _QueuePusher(object):
         return self.queue_map_step_from_parameters(message_parameters)
 
     def queue_reduce_step_from_parameters(self, message_parameters, 
-                                                  parent_invocation):
+                                          parent_invocation):
         """We're reflecting (switch directions from mapping to reduction). The 
         current step is an action step (no mappings were done). The next 
         invocation will successively take the invocation-IDs of one parent to 
@@ -57,10 +58,12 @@ class _QueuePusher(object):
         _logger.debug("Queueing reduce step for parent invocation: [%s]", 
                       parent_invocation.invocation_id)
 
+        workflow = message_parameters.workflow
+
         reduce_invocation = mr.models.kv.invocation.Invocation(
                                 invocation_id=None,
                                 workflow_name=\
-                                    message_parameters.workflow.workflow_name,
+                                    workflow.workflow_name,
                                 parent_invocation_id=\
                                     parent_invocation.invocation_id,
                                 step_name=parent_invocation.step_name,
@@ -68,8 +71,27 @@ class _QueuePusher(object):
 
         reduce_invocation.save()
 
+        # Create a tracking tree for this new invocation.
+
+        it = mr.models.kv.trees.invocations.InvocationsTree(
+                workflow, 
+                reduce_invocation)
+
+        it.create()
+
+        # Add an invocation to bind this invocation to our true parent (the 
+        # last actual invocation, not the one we're being given).
+
+        parent_tree = mr.models.kv.trees.invocations.InvocationsTree(
+                        workflow, 
+                        message_parameters.invocation)
+
+        parent_tree.add_child(reduce_invocation.invocation_id)
+
+        # Queue the reduction.
+
         reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-            workflow=message_parameters.workflow,
+            workflow=workflow,
             invocation=reduce_invocation,
             request=message_parameters.request,
             job=message_parameters.job,
@@ -78,7 +100,7 @@ class _QueuePusher(object):
             arguments=None)
 
         replacements = {
-            'workflow_name': reduce_parameters.workflow.workflow_name,
+            'workflow_name': workflow.workflow_name,
         }
 
         topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements
@@ -121,7 +143,7 @@ class _StepProcessor(object):
                                             next_arguments))
 
         # The next invocation will have this [mapping] step as a parent.
-        mapped_invocation = mr.models.kv.invocation.Invocation(
+        map_invocation = mr.models.kv.invocation.Invocation(
                                 invocation_id=None,
                                 workflow_name=workflow.workflow_name,
                                 parent_invocation_id=invocation.invocation_id,
@@ -130,18 +152,36 @@ class _StepProcessor(object):
                                 direction=mr.constants.D_MAP)
 
 # TODO(dustin): Debugging.
-        assert mapped_invocation.parent_invocation_id is not None
+        assert map_invocation.parent_invocation_id is not None
 
-        mapped_invocation.save()
+        map_invocation.save()
+
+        # Create a tracking tree for this new invocation.
+
+        it = mr.models.kv.trees.invocations.InvocationsTree(
+                workflow, 
+                map_invocation)
+
+        it.create()
+
+        # Add an association to bind this invocation to our parent's.
+
+        parent_tree = mr.models.kv.trees.invocations.InvocationsTree(
+                        workflow, 
+                        invocation)
+
+        parent_tree.add_child(map_invocation.invocation_id)
+
+        # Queue the mapping.
 
         _logger.debug("Mapped invocation: [%s] => [%s]",
-                      invocation.invocation_id, mapped_invocation.invocation_id)
+                      invocation.invocation_id, map_invocation.invocation_id)
 
-        mapped_steps_tree.add_child(mapped_invocation.invocation_id)
+        mapped_steps_tree.add_child(map_invocation.invocation_id)
 
         mapped_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
             workflow=workflow,
-            invocation=mapped_invocation,
+            invocation=map_invocation,
             request=request,
             job=job,
             step=next_step,
@@ -362,7 +402,7 @@ class _StepProcessor(object):
                     workflow, 
                     parent_invocation)
 
-            children_gen = mst.list_entities()
+            children_gen = mst.list_entities_and_meta()
 
             if mr.config.IS_DEBUG is True:
                 children_gen = list(children_gen)

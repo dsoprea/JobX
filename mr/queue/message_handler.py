@@ -35,6 +35,12 @@ class MessageHandler(object):
                       format_version, decoded_message)
 
         qmf = mr.queue.queue_message.get_queue_message_funnel()
+# TODO(dustin): We should embed KV state, and throw a catchable exception if 
+#               the KV has not yet reached consistency. We might add 
+#               provisions to take advantage of the indices monotically-
+#               increasing nature with *etcd* (whereby we can check whichever 
+#               has the highest index first, and if it passes we won't have to 
+#               be discretionary towards the rest).
         message_parameters = qmf.inflate(format_version, decoded_message)
 
         if mr.config.queue.IS_MULTITHREADED is True:

@@ -52,8 +52,7 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
         _logger.debug("Received MAP message from queue: [%s]", 
                       message.message_id)
 
-#        self.ce.elect_connection().fin(message.message_id)
-#        connection.command.fin(message.message_id)
+# TODO(dustin): We might want to fork into a new thread.
 
         try:
             self.__mh.process_message(message.body)
@@ -65,11 +64,6 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
             _logger.debug("MAP message processed successfully: [%s]", 
                           message.message_id)
 
-# TODO(dustin): Debugging. There might be an issue producing messages while 
-#               actively consuming messages. Trying to finish them before we 
-#               actually process them.
-#        raise nsq.message_handler.MessageManuallyFinishedException()
-
     def handle_reduce(self, connection, message, context):
         """We are receiving a map-reduce message (that's all we'll receive). 
         Forward it to standard map-reduce message processing.
@@ -78,8 +72,7 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
         _logger.debug("Received REDUCE message from queue: [%s]", 
                       message.message_id)
 
-#        self.ce.elect_connection().fin(message.message_id)
-#        connection.command.fin(message.message_id)
+# TODO(dustin): We might want to fork into a new thread.
 
         try:
             self.__mh.process_message(message.body)
@@ -90,11 +83,6 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
         else:
             _logger.debug("REDUCE processed successfully: [%s]", 
                           message.message_id)
-
-# TODO(dustin): Debugging. There might be an issue producing messages while 
-#               actively consuming messages. Trying to finish them before we 
-#               actually process them.
-#        raise nsq.message_handler.MessageManuallyFinishedException()
 
 
 class _NsqQueueControl(mr.queue.queue_control.QueueControl):

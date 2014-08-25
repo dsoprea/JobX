@@ -12,7 +12,8 @@ import mr.models.kv.handler
 
 _logger = logging.getLogger(__name__)
 
-# We have to have a symbol that matches the alleged name in order to pickle.
+# We can't prefix with an underscore because we require a symbol that matches 
+# the alleged name in order to pickle.
 QueueMessageV1 = collections.namedtuple(
                     'QueueMessageV1', 
                     ['workflow_name',
