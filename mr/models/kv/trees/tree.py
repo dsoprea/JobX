@@ -5,7 +5,7 @@ import mr.models.kv.data_layer
 import mr.compat
 
 _logger = logging.getLogger(__name__)
-_logger.setLevel(logging.INFO)
+#_logger.setLevel(logging.INFO)
 
 # TODO(dustin): This is a base-class. We need to be able to represent trees of 
 #               models, where each of these mappings don't necessarily have an 
@@ -78,6 +78,11 @@ class Tree(mr.models.kv.common.CommonKv):
         identity = self.__get_root_identity() + (name,)
         return _dl.create_only(identity, mr.config.kv.ENCODER(meta))
 
+    def get_child_meta(self, name):
+        identity = self.__get_root_identity() + (name,)
+        (state, encoded_meta) = _dl.get(identity)
+        return mr.config.kv.DECODER(encoded_meta)
+
     def add_child_entity(self, entity, meta={}):
         name = self.get_name_from_child_entity(entity)
         return self.add_child(name, meta)
@@ -90,10 +95,15 @@ class Tree(mr.models.kv.common.CommonKv):
         name = self.get_name_from_child_entity(entity)
         return self.update_child(name, meta)
 
-    def list_entities(self):
+    def list_entities_and_meta(self):
         identity = self.__get_root_identity()
         for name, encoded_meta in _dl.list(identity):
             yield (self.get_child_model_entity(name), encoded_meta)
+
+    def list_entities(self):
+        identity = self.__get_root_identity()
+        for name in _dl.list_keys(identity):
+            yield self.get_child_model_entity(name)
 
     def list(self):
         identity = self.__get_root_identity()

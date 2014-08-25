@@ -10,7 +10,6 @@ import mr.compat
 logging.getLogger('etcd').setLevel(logging.INFO)
 
 _logger = logging.getLogger(__name__)
-_logger.setLevel(logging.INFO)
 
 _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
@@ -74,7 +73,7 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
             # child as well (clip the search-key path-prefix from the child-key).
             yield (child.key[len(root_key) + 1:], child.value)
 
-    def list_children(self, root_identity):
+    def list_keys(self, root_identity):
         root_key = self.__class__.flatten_identity(root_identity)
 
 # TODO(dustin): Currently, we have to receive the compete response from *etcd* 
