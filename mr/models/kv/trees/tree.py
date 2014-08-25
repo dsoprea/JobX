@@ -5,6 +5,7 @@ import mr.models.kv.data_layer
 import mr.compat
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 # TODO(dustin): This is a base-class. We need to be able to represent trees of 
 #               models, where each of these mappings don't necessarily have an 

@@ -10,7 +10,7 @@ root_path = os.path.abspath(os.path.join(os.path.dirname(mr.__file__), '..'))
 
 os.chdir(root_path)
 
-#os.environ['DEBUG'] = '1'
+os.environ['DEBUG'] = '1'
 os.environ['MR_WORKFLOW_NAMES'] = 'dev'
 
 import subprocess

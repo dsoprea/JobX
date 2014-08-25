@@ -13,6 +13,7 @@ import mr.compat
 logging.getLogger('etcd').setLevel(logging.INFO)
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 
 class ValidationError(Exception):

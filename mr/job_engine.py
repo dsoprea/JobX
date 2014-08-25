@@ -54,8 +54,8 @@ class _QueuePusher(object):
         the next.
         """
 
-        _logger.debug("Queueing reduce step for parent invocation: %s", 
-                      parent_invocation)
+        _logger.debug("Queueing reduce step for parent invocation: [%s]", 
+                      parent_invocation.invocation_id)
 
         reduce_invocation = mr.models.kv.invocation.Invocation(
                                 invocation_id=None,
@@ -107,10 +107,11 @@ class _StepProcessor(object):
         request = original_parameters.request
         workflow = original_parameters.workflow
         job = original_parameters.job
+        step = original_parameters.step
         invocation = original_parameters.invocation
 
-        _logger.debug("Queueing mapped step:\n%s =>\n%s",
-                      invocation, next_step)
+        _logger.debug("Queueing mapped step from invocation [%s] and step [%s] to next (downstream) step [%s]",
+                      invocation.invocation_id, step.step_name, next_step.step_name)
 
         next_handler = mr.models.kv.handler.get(
                             workflow, 
@@ -133,8 +134,8 @@ class _StepProcessor(object):
 
         mapped_invocation.save()
 
-        _logger.debug("Mapped invocation:\n%s =>\n%s",
-                      invocation, mapped_invocation)
+        _logger.debug("Mapped invocation: [%s] => [%s]",
+                      invocation.invocation_id, mapped_invocation.invocation_id)
 
         mapped_steps_tree.add_child(mapped_invocation.invocation_id)
 
@@ -227,7 +228,7 @@ class _StepProcessor(object):
         managed_workflow = wm.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
 
-        _logger.debug("Processing MAP: %s", invocation)
+        _logger.debug("Processing MAP: [%s]", invocation.invocation_id)
 
         try:
             # Call the handler.
@@ -351,7 +352,7 @@ class _StepProcessor(object):
                                 invocation.parent_invocation_id)
 
         _logger.debug("Processing REDUCE [%s] of original invocation [%s].", 
-                      invocation, parent_invocation)
+                      invocation.invocation_id, parent_invocation.invocation_id)
 
         try:
             # Call the handler with a generator of all of the results to be 
