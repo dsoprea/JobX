@@ -18,11 +18,83 @@ logging.getLogger('nsq').setLevel(logging.INFO)
 _logger = logging.getLogger(__name__)
 
 
-class NsqMessageHandler(
-        nsq.message_handler.MessageHandler, 
-        mr.queue.message_handler.MessageHandler):
+class _NsqMessageHandler(nsq.message_handler.MessageHandler):
 
-    pass
+    def __init__(self, *args, **kwargs):
+        nsq.message_handler.MessageHandler.__init__(self, *args, **kwargs)
+        self.__mh = mr.queue.message_handler.MessageHandler()
+
+    def classify_message(self, connection, message):
+        """Classify the type of message that is about to be processed."""
+
+        # Since we only really care about whether this is a map or reduce 
+        # message, and we have different topics for both, we're going to 
+        # classify based on the topic, rather than anything in the message 
+        # itself.
+
+        topic = connection.context.topic
+
+        if topic.endswith('.map') is True:
+            class_ = 'map'
+        elif topic.endswith('.reduce') is True:
+            class_ = 'reduce'
+        else:
+            raise ValueError("Topic is not valid for classification: [%s]" % 
+                             (topic,))
+
+        return (class_, None)
+
+    def handle_map(self, connection, message, context):
+        """We are receiving a map-reduce message (that's all we'll receive). 
+        Forward it to standard map-reduce message processing.
+        """
+
+        _logger.debug("Received MAP message from queue: [%s]", 
+                      message.message_id)
+
+#        self.ce.elect_connection().fin(message.message_id)
+#        connection.command.fin(message.message_id)
+
+        try:
+            self.__mh.process_message(message.body)
+        except:
+            # We don't want the message to reappear, later.
+            _logger.exception("There was an error while handling the MAP"
+                              "message. Squashing it.")
+        else:
+            _logger.debug("MAP message processed successfully: [%s]", 
+                          message.message_id)
+
+# TODO(dustin): Debugging. There might be an issue producing messages while 
+#               actively consuming messages. Trying to finish them before we 
+#               actually process them.
+#        raise nsq.message_handler.MessageManuallyFinishedException()
+
+    def handle_reduce(self, connection, message, context):
+        """We are receiving a map-reduce message (that's all we'll receive). 
+        Forward it to standard map-reduce message processing.
+        """
+
+        _logger.debug("Received REDUCE message from queue: [%s]", 
+                      message.message_id)
+
+#        self.ce.elect_connection().fin(message.message_id)
+#        connection.command.fin(message.message_id)
+
+        try:
+            self.__mh.process_message(message.body)
+        except:
+            # We don't want the message to reappear, later.
+            _logger.exception("There was an error while handling the REDUCE "
+                              "message. Squashing it.")
+        else:
+            _logger.debug("REDUCE processed successfully: [%s]", 
+                          message.message_id)
+
+# TODO(dustin): Debugging. There might be an issue producing messages while 
+#               actively consuming messages. Trying to finish them before we 
+#               actually process them.
+#        raise nsq.message_handler.MessageManuallyFinishedException()
 
 
 class _NsqQueueControl(mr.queue.queue_control.QueueControl):
@@ -132,7 +204,7 @@ class _NsqQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
                 context_list,
                 node_collection, 
                 mr.config.nsq_queue.MAX_IN_FLIGHT, 
-                message_handler_cls=NsqMessageHandler)
+                message_handler_cls=_NsqMessageHandler)
 
     def is_alive(self):
 # TODO(dustin): This isn't yet being implemented/facilitated.
