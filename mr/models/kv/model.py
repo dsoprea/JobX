@@ -83,7 +83,7 @@ class Model(mr.models.kv.common.CommonKv):
         # spurious keys without realizing it.
         if data[cls.key_field] is None:
             key = cls.make_opaque()
-            _logger.debug("Model [%s] was not loaded with a key. Generating"
+            _logger.debug("Model [%s] was not loaded with a key. Generating "
                           "key: [%s]", cls.entity_class, key)
 
             data[cls.key_field] = key
