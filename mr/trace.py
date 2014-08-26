@@ -33,11 +33,11 @@ def invocation_graph_gen(workflow, request):
         for child_invocation in it.list_entities():
             if results is not None:
                 try:
-                    result = results.get_child_meta(
+                    meta = results.get_child_meta(
                                 child_invocation.invocation_id)
                 except KeyError:
                     # Was not a mapping.
-                    result = None
+                    meta = None
 
-            yield (parent_invocation, child_invocation, result)
+            yield (parent_invocation, child_invocation, meta)
             q.put(child_invocation)

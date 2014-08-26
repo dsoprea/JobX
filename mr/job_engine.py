@@ -4,6 +4,7 @@ import functools
 import types
 import traceback
 import json
+import time
 
 import gevent.pool
 
@@ -202,7 +203,12 @@ class _StepProcessor(object):
         _logger.debug("Mapped invocation: [%s] => [%s]",
                       invocation.invocation_id, map_invocation.invocation_id)
 
-        mapped_steps_tree.add_child(map_invocation.invocation_id)
+        meta = {
+            # Queued time
+            'qt': time.time(),
+        }
+
+        mapped_steps_tree.add_child(map_invocation.invocation_id, meta=meta)
 
         mapped_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
             workflow=workflow,
@@ -334,9 +340,13 @@ class _StepProcessor(object):
                             workflow, 
                             parent_invocation)
 
-                    meta = {
-                        'result': handler_result,
-                    }
+                    meta = mst.get_child_meta(invocation.invocation_id)
+
+                    # Result
+                    meta['r'] = handler_result
+                        
+                    # Completed time
+                    meta['ct'] = time.time()
 
                     mst.update_child(invocation.invocation_id, meta=meta)
 
@@ -367,14 +377,6 @@ class _StepProcessor(object):
                                       "count after ACTION: (%d)", 
                                       parent_invocation.invocation_id, 
                                       parent_invocation.mapped_waiting)
-# TODO(dustin): Just for debugging.
-                        mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                                workflow, 
-                                parent_invocation)
-
-                        children_count = len(list(mst.list_entities_and_meta()))
-
-                        _logger.debug("Stored results: (%d)", children_count)
                 else:
                     # We were called directly from the initial-step of the 
                     # request. There is no tree of results. There was no 
@@ -474,12 +476,12 @@ class _StepProcessor(object):
                         meta = json.loads(encoded_meta)
                         print("Result (%d): [%s] %s" % 
                               (i, child_invocation.invocation_id, 
-                               meta['result']))
+                               meta['r']))
 
                 print('')
 
 # TODO(dustin): Our mechanics still aren't guaranteeing the order of the results.
-            results_gen = (json.loads(encoded_meta)['result']
+            results_gen = (json.loads(encoded_meta)['r']
                            for (child_invocation, encoded_meta) 
                            in children_gen)
 
@@ -507,9 +509,13 @@ class _StepProcessor(object):
                         workflow, 
                         parent_parent_invocation)
 
-                meta = {
-                    'result': handler_result,
-                }
+                meta = mst.get_child_meta(parent_invocation.invocation_id)
+
+                # Result
+                meta['r'] = handler_result
+                
+                # Completed
+                meta['ct'] = time.time()
 
                 mst.update_child(parent_invocation.invocation_id, meta=meta)
 
