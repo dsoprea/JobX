@@ -148,7 +148,10 @@ class _QueueMessageFunnel(object):
             if invocation.direction == mr.constants.D_MAP:
                 handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
             elif invocation.direction == mr.constants.D_REDUCE:
-                handler = mr.models.kv.handler.get(workflow, step.reduce_handler_name)
+                if step.reduce_handler_name is not None:
+                    handler = mr.models.kv.handler.get(workflow, step.reduce_handler_name)
+                else:
+                    handler = None
             else:
                 raise ValueError("Invocation direction [%s] invalid: %s" % 
                                  (invocation.direction, invocation))

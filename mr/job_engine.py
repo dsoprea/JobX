@@ -24,6 +24,19 @@ import mr.constants
 
 _logger = logging.getLogger(__name__)
 
+# TODO(dustin): We can maintain a nice little cache if the whole cluster pushes 
+#               updates to it.
+
+# TODO(dustin): We still have to deal with KV changes not yet having propagated 
+#               by the time a queued message is picked-up by a worker.
+
+# TODO(dustin): We might push changes into both *etcd* and *memcache*. Since 
+#               there might be only one instance of memcache (and entirely in 
+#               memory) vs many instances of *etcd* (and entirely on disk), it 
+#               might provide us immediate concurrency while not completely 
+#               sacrificing durability (the process going down, there should 
+#               still be a high degree of synchronization).
+
 
 class _QueuePusher(object):
     def __init__(self):
@@ -55,8 +68,12 @@ class _QueuePusher(object):
         the next.
         """
 
-        _logger.debug("Queueing reduce step for parent invocation: [%s]", 
-                      parent_invocation.invocation_id)
+        reduce_step = mr.models.kv.step.get(
+                        message_parameters.workflow, 
+                        parent_invocation.step_name)
+
+        _logger.debug("Queueing reduce of step [%s] for parent invocation: [%s]", 
+                      reduce_step.step_name, parent_invocation.invocation_id)
 
         workflow = message_parameters.workflow
 
@@ -66,7 +83,7 @@ class _QueuePusher(object):
                                     workflow.workflow_name,
                                 parent_invocation_id=\
                                     parent_invocation.invocation_id,
-                                step_name=parent_invocation.step_name,
+                                step_name=reduce_step.step_name,
                                 direction=mr.constants.D_REDUCE)
 
         reduce_invocation.save()
@@ -89,15 +106,23 @@ class _QueuePusher(object):
         parent_tree.add_child(reduce_invocation.invocation_id)
 
         # Queue the reduction.
-
+# TODO(dustin): We would prefer to derive the message-parameters *from* the 
+#               invocation, but that would require several lookups when we 
+#               already have the data right here.
         reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
             workflow=workflow,
             invocation=reduce_invocation,
             request=message_parameters.request,
             job=message_parameters.job,
-            step=message_parameters.step,
-            handler=message_parameters.step.reduce_handler_name,
+            step=reduce_step,
+            handler=reduce_step.reduce_handler_name,
             arguments=None)
+
+        assert reduce_parameters.handler is not None
+
+        _logger.debug("Reduction [%s] will be performed over step: [%s].", 
+                      reduce_parameters.invocation.invocation_id, 
+                      reduce_step.step_name)
 
         replacements = {
             'workflow_name': workflow.workflow_name,
@@ -324,9 +349,10 @@ class _StepProcessor(object):
 
                     if parent_invocation.mapped_waiting <= 0:
                         _logger.debug("REFLECTION: Handler for MAPPING "
-                                      "returned a result, and all results "
-                                      "have been rendered for parent. "
+                                      "returned a result, and all (%d) "
+                                      "results have been rendered for parent. "
                                       "Reducing for parent [%s].", 
+                                      parent_invocation.mapped_count, 
                                       parent_invocation.invocation_id)
 
                         pusher = _get_pusher()
@@ -380,6 +406,8 @@ class _StepProcessor(object):
         workflow = message_parameters.workflow
         request = message_parameters.request
 
+        assert step.reduce_handler_name is not None
+
         wm = mr.workflow_manager.get_wm()
         managed_workflow = wm.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
@@ -406,6 +434,11 @@ class _StepProcessor(object):
 
             if mr.config.IS_DEBUG is True:
                 children_gen = list(children_gen)
+
+                _logger.debug("(%d) results will be reduced by step [%s] for "
+                              "original invocation [%s].",
+                              len(children_gen), step.reduce_handler_name, 
+                              parent_invocation.invocation_id)
                 
                 print('')
                 for (i, (child_invocation, encoded_meta)) \
@@ -425,7 +458,7 @@ class _StepProcessor(object):
             arguments = {
                 'results': results_gen,
             }
-            
+
             handler_result = handlers.run_handler(
                                 step.reduce_handler_name, 
                                 arguments)

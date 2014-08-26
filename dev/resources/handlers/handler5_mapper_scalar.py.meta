@@ -1,0 +1,8 @@
+{
+    "description": "Just return a scalar",
+    "argument_spec": [
+        ["arg1", "int"]
+    ],
+    "source_type": "python",
+    "handler_type": "mapper"
+}

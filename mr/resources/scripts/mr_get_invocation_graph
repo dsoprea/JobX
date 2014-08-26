@@ -42,9 +42,9 @@ print('')
 for (parent_invocation, child_invocation, result) \
     in mr.trace.invocation_graph_gen(workflow, request):
         if child_invocation.direction == mr.constants.D_MAP:
-            action_phrase = 'MAPPED TO'
+            action_phrase = 'has been MAPPED to'
         elif child_invocation.direction == mr.constants.D_REDUCE:
-            action_phrase = 'REDUCED TO'
+            action_phrase = 'will be REDUCED by'
         else:
             raise ValueError("Invocation [%s] direction [%s] invalid." % 
                              (child_invocation.invocation_id, 

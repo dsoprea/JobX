@@ -10,6 +10,7 @@ import mr.compat
 logging.getLogger('etcd').setLevel(logging.INFO)
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 

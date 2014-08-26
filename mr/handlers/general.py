@@ -33,6 +33,7 @@ class Handlers(object):
         self.__library = library
         self.__compiled = {}
 
+# TODO(dustin): We need to do this periodically.
         self.__update_handlers()
 
     def __update_handlers(self):
@@ -124,10 +125,12 @@ class Handlers(object):
         if handler_count == 0:
             _logger.warning("No handlers were presented by the library. No code was compiled.")
 
-# TODO(dustin): This needs to compile for whatever language the source-code is.
+# TODO(dustin): This needs to compile for whatever language the source-code is. We need to move the compilers into separate modules.
     def compile(self, name, arg_names, code):
         name = "(lambda handler '%s')" % (name,)
-     
+# TODO(dustin): We should expect the meta info to be put into a doc string in 
+#               the body of the subroutine. We can extract this from the adhoc 
+#               function, here.    
         # Needs to start with a letter. We don't want to use the actual name, 
         # because it would be an arbitrary choice and would imply that the 
         # source-code is written that way. If this is a mechanical process, we 

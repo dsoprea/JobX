@@ -36,18 +36,23 @@ except KeyError:
     print("Map handler is invalid: [%s]" % (args.map_handler_name,))
     sys.exit(1)
 
-try:
-    handler_reduce = mr.models.kv.handler.get(workflow, args.reduce_handler_name)
-except KeyError:
-    print("Reduce handler is invalid: [%s]" % (args.reduce_handler_name,))
-    sys.exit(2)
+if args.reduce_handler_name != '':
+    try:
+        handler_reduce = mr.models.kv.handler.get(workflow, args.reduce_handler_name)
+    except KeyError:
+        print("Reduce handler is invalid: [%s]" % (args.reduce_handler_name,))
+        sys.exit(2)
+
+    reduce_handler_name = handler_reduce.handler_name
+else:
+    reduce_handler_name = None
 
 s = mr.models.kv.step.Step(
         workflow_name=args.workflow_name, 
         step_name=args.name, 
         description=args.description, 
         map_handler_name=handler_map.handler_name,
-        reduce_handler_name=handler_reduce.handler_name)
+        reduce_handler_name=reduce_handler_name)
 
 s.save()
 

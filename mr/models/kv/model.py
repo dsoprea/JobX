@@ -10,9 +10,8 @@ import mr.models.kv.common
 import mr.models.kv.data_layer
 import mr.compat
 
-logging.getLogger('etcd').setLevel(logging.INFO)
-
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 
 class ValidationError(Exception):
