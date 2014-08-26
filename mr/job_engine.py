@@ -224,23 +224,11 @@ class _StepProcessor(object):
         assert invocation.mapped_count is None
         assert invocation.mapped_waiting is None
 
-        # The handler must first yield the number of steps that will be
-        # mapped-to.
+        # This has to be an integer just in case one of the downstream steps 
+        # completes before we finish our accounting, here.
 
-        try:
-            step_count = handler_result_gen.next()
-        except StopIteration:
-            _logger.error("Handler returned an empty generator. "
-                          "Weird: [%s]", handler_name)
-            raise
-
-        _logger.debug("Invocation [%s] has mapped (%d) steps.", 
-                      invocation.invocation_id, step_count)
-
-        if issubclass(step_count.__class__, int) is False:
-            raise ValueError("We expect an integer step count from "
-                             "handler [%s], but didn't get it: [%s]" %
-                             (handler_name, step_count))
+        invocation.mapped_waiting = 0
+        invocation.save()
 
         # Create a home for the mapping tree, for the parent's invocation 
         # record.
@@ -250,13 +238,6 @@ class _StepProcessor(object):
                 invocation)
 
         mst.create()
-
-        # Post the number of steps that were mapped before we do the 
-        # actual queueing, so our counters decrement correctly.
-
-        invocation.mapped_count = step_count
-        invocation.mapped_waiting = step_count
-        invocation.save()
 
         i = 0
         for (mapped_step_name, mapped_arguments) in handler_result_gen:
@@ -275,11 +256,19 @@ class _StepProcessor(object):
 
             i += 1
 
-        if i != step_count:
-            raise ValueError("The number of steps (%d) yielded by "
-                             "handler [%s] did not match the "
-                             "announced count (%d)." % 
-                             (i, handler_name, step_count))
+        step_count = i
+
+        # Now, update the number of mapped steps into the invocation. Because 
+        # we either decrement or add maximum positive value, and the value of 
+        # mapped_waiting will never be glimpsed before decrementing it, there 
+        # won't be any chance of a completed step seeing the mappd_waiting 
+        # value equal zero more than once (which is our trigger for a 
+        # reduction), which will be the very last manipulation it counters.
+
+        _logger.debug("Invocation [%s] has mapped (%d) steps.", 
+                      invocation.invocation_id, step_count)
+
+        self.__atomic_add_mapped_steps(workflow, invocation, step_count)
 
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
@@ -347,7 +336,11 @@ class _StepProcessor(object):
                                             workflow,
                                             invocation)
 
-                    if parent_invocation.mapped_waiting <= 0:
+                    # It might be negative if the total number of steps has 
+                    # already been added to it or negative if not and steps are 
+                    # already being processed, but, if it's exactly zero, we're 
+                    # done.
+                    if parent_invocation.mapped_waiting == 0:
                         _logger.debug("REFLECTION: Handler for MAPPING "
                                       "returned a result, and all (%d) "
                                       "results have been rendered for parent. "
@@ -386,6 +379,18 @@ class _StepProcessor(object):
 
         def set_cb(obj):
             obj.mapped_waiting -= 1
+
+        return mr.models.kv.invocation.Invocation.atomic_update(get_cb, set_cb)
+
+    def __atomic_add_mapped_steps(self, workflow, invocation, step_count):
+        def get_cb():
+            return mr.models.kv.invocation.get(
+                    workflow, 
+                    invocation.invocation_id)
+
+        def set_cb(obj):
+            obj.mapped_count = step_count
+            obj.mapped_waiting += step_count
 
         return mr.models.kv.invocation.Invocation.atomic_update(get_cb, set_cb)
 
@@ -492,7 +497,7 @@ class _StepProcessor(object):
                     workflow,
                     parent_invocation)
 
-                if parent_parent_invocation.mapped_waiting <= 0:
+                if parent_parent_invocation.mapped_waiting == 0:
                     _logger.debug("Handler for REDUCTION returned a result, "
                                   "and all results have been rendered for "
                                   "parent-parent. Reducing for parent [%s].", 

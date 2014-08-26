@@ -4,7 +4,7 @@ interval = random.randrange(0, arg1)
 count = arg1 // interval
 
 # Number of yielded steps.
-yield count
+#yield count
 
 for i in range(count):
     yielded_step_name = 'step5'
