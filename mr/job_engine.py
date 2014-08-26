@@ -267,8 +267,18 @@ class _StepProcessor(object):
 
         _logger.debug("Invocation [%s] has mapped (%d) steps.", 
                       invocation.invocation_id, step_count)
+# We might need to check for whether a reduction is necessary here. By the time 
+# we get here, we could've potentially finished all steps, which nothing else 
+# checking for (0) waiting-steps.
+        invocation = self.__add_mapped_steps(
+                        workflow, 
+                        invocation, 
+                        step_count)
 
-        self.__atomic_add_mapped_steps(workflow, invocation, step_count)
+        _logger.debug("Invocation [%s] has had its counts updated: MC=(%d) "
+                      "MW=(%d)", 
+                      invocation.invocation_id, invocation.mapped_count, 
+                      invocation.mapped_waiting)
 
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
@@ -352,6 +362,19 @@ class _StepProcessor(object):
                         pusher.queue_reduce_step_from_parameters(
                             message_parameters, 
                             parent_invocation)
+                    else:
+                        _logger.debug("Parent invocation [%s] mapped-waiting "
+                                      "count after ACTION: (%d)", 
+                                      parent_invocation.invocation_id, 
+                                      parent_invocation.mapped_waiting)
+# TODO(dustin): Just for debugging.
+                        mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
+                                workflow, 
+                                parent_invocation)
+
+                        children_count = len(list(mst.list_entities_and_meta()))
+
+                        _logger.debug("Stored results: (%d)", children_count)
                 else:
                     # We were called directly from the initial-step of the 
                     # request. There is no tree of results. There was no 
@@ -382,7 +405,7 @@ class _StepProcessor(object):
 
         return mr.models.kv.invocation.Invocation.atomic_update(get_cb, set_cb)
 
-    def __atomic_add_mapped_steps(self, workflow, invocation, step_count):
+    def __add_mapped_steps(self, workflow, invocation, step_count):
         def get_cb():
             return mr.models.kv.invocation.get(
                     workflow, 
@@ -506,6 +529,11 @@ class _StepProcessor(object):
                     _get_pusher().queue_reduce_step_from_parameters(
                         message_parameters, 
                         parent_parent_invocation)
+                else:
+                    _logger.debug("Parent invocation [%s] mapped-waiting "
+                                  "count after REDUCE: (%d)", 
+                                  parent_parent_invocation.invocation_id,
+                                  parent_parent_invocation.mapped_waiting)
             else:
                 # We've reduced our way back up to the original request.
 

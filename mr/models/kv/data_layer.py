@@ -15,6 +15,10 @@ _logger.setLevel(logging.INFO)
 _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
 
+class KvPreconditionException(Exception):
+    pass
+
+
 class DataLayerKv(mr.models.kv.common.CommonKv):
     def get(self, identity):
         key = self.__class__.flatten_identity(identity)
@@ -39,7 +43,7 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
 
         # Re-raising here rather than in the catch above makes for cleaner 
         # logging (no exception-from-exception messages).
-        raise ValueError("Key to update doesn't already exist: [%s]" % (key))
+        raise KvPreconditionException("Update or state precondition failed.")
 
     def create_only(self, identity, value):
         key = self.__class__.flatten_identity(identity)
@@ -51,7 +55,7 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
 
         # Re-raising here rather than in the catch above makes for cleaner 
         # logging (no exception-from-exception messages).
-        raise ValueError("Key to create already exists: [%s]" % (key))
+        raise KvPreconditionException("Create or state precondition failed.")
 
     def delete(self, identity):
         key = self.__class__.flatten_identity(identity)

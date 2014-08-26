@@ -1,12 +1,11 @@
 import random
 
-interval = random.randrange(0, arg1)
-count = arg1 // interval
+count = random.randrange(1, arg1)
 
-# Number of yielded steps.
-#yield count
+while count > 1:
+    interval = random.randrange(1, count)
+    count -= interval
 
-for i in range(count):
     yielded_step_name = 'step5'
     yielded_step_args = {'arg1': interval }
 

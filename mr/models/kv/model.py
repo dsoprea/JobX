@@ -196,7 +196,7 @@ class Model(mr.models.kv.common.CommonKv):
             try:
                 set_cb(obj)
                 obj.save(enforce_pristine=True)
-            except etcd.exceptions.EtcdPreconditionException:
+            except mr.models.kv.data_layer.KvPreconditionException:
                 obj.refresh()
             else:
                 return obj
