@@ -1,3 +1,15 @@
+"""
+Yields many downstream steps
+
+**
+argument_spec:
+    -
+        name: arg1
+        type: int
+
+handler_type: mapper
+"""
+
 import random
 
 count = random.randrange(1, arg1)
@@ -7,6 +19,6 @@ while count > 1:
     count -= interval
 
     yielded_step_name = 'step5'
-    yielded_step_args = {'arg1': interval }
+    yielded_step_args = { 'arg1': interval }
 
     yield (yielded_step_name, yielded_step_args)

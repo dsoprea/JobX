@@ -1,8 +1,0 @@
-{
-    "description": "Yields many downstream steps",
-    "argument_spec": [
-        ["arg1", "int"]
-    ],
-    "source_type": "python",
-    "handler_type": "mapper"
-}

@@ -34,6 +34,11 @@ def _get_arguments_from_request():
 
 @job_bp.route('/<workflow_name>/<job_name>', methods=['POST'])
 def job_submit(workflow_name, job_name):
+
+# TODO(dustin): We need to determine whether or not a terminated connection 
+#               will terminate the request. If so, we'll need to figure out 
+#               how to prevent it (maybe just a Gunicorn or Nginx change).
+
     # Use the workflow-manager in order to verify that we're managing this 
     # workflow.
     wm = mr.workflow_manager.get_wm()

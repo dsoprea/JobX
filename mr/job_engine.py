@@ -35,7 +35,7 @@ _logger = logging.getLogger(__name__)
 #               there might be only one instance of memcache (and entirely in 
 #               memory) vs many instances of *etcd* (and entirely on disk), it 
 #               might provide us immediate concurrency while not completely 
-#               sacrificing durability (the process going down, there should 
+#               sacrificing durability (if the process going down, there should 
 #               still be a high degree of synchronization).
 
 

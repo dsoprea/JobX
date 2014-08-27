@@ -1,8 +1,0 @@
-{
-    "description": "reducer test handler 2",
-    "argument_spec": [
-        ["results", "list"]
-    ],
-    "source_type": "python",
-    "handler_type": "reducer"
-}

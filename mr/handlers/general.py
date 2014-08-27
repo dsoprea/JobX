@@ -4,9 +4,9 @@ import os
 import logging
 import collections
 
-import mr.config
 import mr.models.kv.handler
 import mr.models.kv.workflow
+import mr.handlers.utility
 
 _logger = logging.getLogger(__name__)
 
@@ -117,42 +117,18 @@ class Handlers(object):
             _logger.info("Compiling handler: [%s]", name)
 
             hd = self.__library.get_handler(name)
-            self.__compiled[name] = self.compile(
-                                        name, 
-                                        arg_names, 
-                                        hd.source_code)
+            processor = mr.handlers.utility.get_processor(hd.source_type)
+
+            (meta, compiled) = processor.compile(
+                                name, 
+                                arg_names, 
+                                hd.source_code)
         
+            self.__compiled[name] = compiled
+
         if handler_count == 0:
-            _logger.warning("No handlers were presented by the library. No code was compiled.")
-
-# TODO(dustin): This needs to compile for whatever language the source-code is. We need to move the compilers into separate modules.
-    def compile(self, name, arg_names, code):
-        name = "(lambda handler '%s')" % (name,)
-# TODO(dustin): We should expect the meta info to be put into a doc string in 
-#               the body of the subroutine. We can extract this from the adhoc 
-#               function, here.    
-        # Needs to start with a letter. We don't want to use the actual name, 
-        # because it would be an arbitrary choice and would imply that the 
-        # source-code is written that way. If this is a mechanical process, we 
-        # wish it to be represented as such.
-        id_ = 'a' + hashlib.sha1(str(random.random())).hexdigest()
-        code = "def " + id_ + "(" + ', '.join(arg_names) + "):\n" + \
-               '\n'.join(('  ' + line) for line in code.replace('\r', '').split('\n')) + '\n'
-
-        if mr.config.IS_DEBUG is True:
-            # Since this will evaluated the parameters but will only show 
-            # anything if we're showing debug logging, we'll only do this 
-            # *while* in debug mode.
-
-            # The maximum line-width for proper Python modules.
-            border = '-' * 79
-            _logger.debug("Handler [%s]\n%s\n%s\n%s", name, border, code.rstrip(), border)
-
-        c = compile(code, name, 'exec')
-        locals_ = {}
-        exec(c, globals(), locals_)
-     
-        return locals_[id_]
+            _logger.warning("No handlers were presented by the library. No "
+                            "code was compiled.")
 
     def run_handler(self, name, arguments_dict):
         hd = self.__library.get_handler(name)

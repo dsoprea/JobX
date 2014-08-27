@@ -1,3 +1,15 @@
+"""
+mapper test handler 3 (with yields)
+
+**
+argument_spec:
+    -
+        name: arg1
+        type: int
+
+handler_type: mapper
+"""
+
 import math
 
 # Number of yielded steps.

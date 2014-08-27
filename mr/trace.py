@@ -7,6 +7,10 @@ import mr.models.kv.trees.mapped_steps
 import mr.constants
 
 def invocation_graph_gen(workflow, request):
+    """Return a generator that presents every a (parent, child) tuple of 
+    invocation relationships.
+    """
+
     def get_invocation(invocation_id):
         return mr.models.kv.invocation.get(
                 workflow, 
