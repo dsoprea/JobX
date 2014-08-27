@@ -11,9 +11,6 @@ _logger = logging.getLogger(__name__)
 class PythonProcessor(mr.handlers.processors.processor.Processor):
     def compile(self, name, arg_names, code):
         name = "(lambda handler '%s')" % (name,)
-# TODO(dustin): We should expect the meta info to be put into a doc string in 
-#               the body of the subroutine. We can extract this from the adhoc 
-#               function, here.
 
         # Needs to start with a letter. We don't want to use the actual name, 
         # because it would be an arbitrary choice and would imply that the 
