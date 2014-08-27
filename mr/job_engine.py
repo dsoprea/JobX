@@ -254,6 +254,31 @@ class _StepProcessor(object):
 #               Hopefully, we can refactor to use in-order queues. Otherwise, 
 #               we'll have to store the indices, which we won't be able to 
 #               reassemble the data with efficiently.
+
+# TODO(dustin): In order to implement combiners, we will:
+# 1. Remove the targeting of individual steps from a mapping handler. Whatever
+#    the implementation, all yielded steps must be homogenous.
+# 2. The only thing that may be yielded from a step is a kev and value.
+# 3. Split the following into mapping, combining, and queueing stages.
+#    a. We will have to use temporary local storage (memory would be ideal to 
+#       prevent thrashing, though pluggable backends would be longer-term) to 
+#       store the keys and values.
+#    b. We will pass these through the combiner, sorted by key.
+#    c. The default combiner will check for successive duplicates, and group 
+#       based on this. It might be just as efficient to just push them into a 
+#       dictionary (they won't have to be fully collected in memory first, and 
+#       hashing will be quicker, if duplicates are all that matter forthe 
+#       default implementation).
+#    d. The default combiner will yield a key and list of values, for each 
+#       unique key. This will be what we store for the arguents to the next 
+#       step.
+# 4. We'll have to update the reducer to take a key and list of values.
+#
+# * Since we'll almost always require a reflection step and the reducers and 
+#   mappers have identical function signatures, we might find a way to send the 
+#   yielded data directly from the mapper to the combiner to the reducer. We 
+#   might yield a "None" for the next step (if we refactor to have to yield the 
+#   name of the next step at the top of the handler).
             self.__queue_map_step(
                     mst,
                     mapped_step, 
