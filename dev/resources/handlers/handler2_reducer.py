@@ -10,4 +10,4 @@ argument_spec:
 handler_type: reducer
 """
 
-return sum(results)
+return sum([result['datum'] for result in results])

@@ -10,4 +10,4 @@ argument_spec:
 handler_type: mapper
 """
 
-return arg1
+return { 'datum': arg1 }

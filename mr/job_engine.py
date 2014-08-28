@@ -256,8 +256,7 @@ class _StepProcessor(object):
 #               reassemble the data with efficiently.
 
 # TODO(dustin): In order to implement combiners, we will:
-# 1. The only thing that may be yielded from a step is a kev and value.
-# 2. Split the following into mapping, combining, and queueing stages.
+# 1. Split the following into mapping, combining, and queueing stages.
 #    a. We will have to use temporary local storage (memory would be ideal to 
 #       prevent thrashing, though pluggable backends would be longer-term) to 
 #       store the keys and values.
@@ -270,7 +269,7 @@ class _StepProcessor(object):
 #    d. The default combiner will yield a key and list of values, for each 
 #       unique key. This will be what we store for the arguents to the next 
 #       step.
-# 3. We'll have to update the reducer to take a key and list of values.
+# 2. We'll have to update the reducer to take a key and list of values.
 #
 # * Since we'll almost always require a reflection step and the reducers and 
 #   mappers have identical function signatures, we might find a way to send the 
@@ -333,8 +332,6 @@ class _StepProcessor(object):
             _logger.debug("Mapper result [%s]: [%s]", 
                           handler_result.__class__.__name__, handler_result)
 
-#            assert issubclass(handler_result.__class__, dict) is True
-
             # Manage downstream steps that were mapped to (the handler was a 
             # generator).
 
@@ -348,6 +345,8 @@ class _StepProcessor(object):
                     invocation, 
                     message_parameters)
             else:
+                assert issubclass(handler_result.__class__, dict) is True
+
                 # The step didn't yield, so it must've done some work and 
                 # returned a result. Store it.
 

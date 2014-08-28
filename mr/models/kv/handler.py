@@ -14,6 +14,8 @@ HT_REDUCER = 'reducer'
 
 HANDLER_TYPES = (HT_MAPPER, HT_REDUCER)
 
+_REDUCER_ARGS_S = set(['results'])
+
 
 class ArgumentMarshalError(Exception):
     pass
@@ -37,6 +39,14 @@ class Handler(mr.models.kv.model.Model):
 
     def get_identity(self):
         return (self.workflow_name, self.handler_name)
+
+    def presave(self):
+        if self.handler_type == HT_REDUCER:
+            defined_arguments_s = set([x[0] for x in self.argument_spec])
+            if defined_arguments_s != _REDUCER_ARGS_S:
+                raise ValueError("Can not save reducer handler with invalid "
+                                 "defined arguments: [%s] != [%s]" % 
+                                 (defined_arguments_s, _REDUCER_ARGS_S))
 
     def postsave(self):
         mr.handlers.general.update_workflow_handle_state(self.workflow_name)
