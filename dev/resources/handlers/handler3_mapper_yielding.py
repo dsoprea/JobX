@@ -12,10 +12,8 @@ handler_type: mapper
 
 import math
 
-# Number of yielded steps.
-yield 1
+yield 'step1'
 
-yielded_step_name = 'step1'
 yielded_step_args = {'arg1': math.sqrt(arg1), 'arg2': 10.0}
 
-yield (yielded_step_name, yielded_step_args)
+yield yielded_step_args

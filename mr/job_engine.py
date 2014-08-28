@@ -230,6 +230,9 @@ class _StepProcessor(object):
         assert invocation.mapped_count is None
         assert invocation.mapped_waiting is None
 
+        mapped_step_name = next(handler_result_gen)
+        mapped_step = mr.models.kv.step.get(workflow, mapped_step_name)
+
         # This has to be an integer just in case one of the downstream steps 
         # completes before we finish our accounting, here.
 
@@ -246,20 +249,15 @@ class _StepProcessor(object):
         mst.create()
 
         i = 0
-        for (mapped_step_name, mapped_arguments) in handler_result_gen:
-            mapped_step = mr.models.kv.step.get(
-                            workflow, 
-                            mapped_step_name)
+        for mapped_arguments in handler_result_gen:
 # TODO(dustin): !! We're not guaranteed an order when retrieving this. 
 #               Hopefully, we can refactor to use in-order queues. Otherwise, 
 #               we'll have to store the indices, which we won't be able to 
 #               reassemble the data with efficiently.
 
 # TODO(dustin): In order to implement combiners, we will:
-# 1. Remove the targeting of individual steps from a mapping handler. Whatever
-#    the implementation, all yielded steps must be homogenous.
-# 2. The only thing that may be yielded from a step is a kev and value.
-# 3. Split the following into mapping, combining, and queueing stages.
+# 1. The only thing that may be yielded from a step is a kev and value.
+# 2. Split the following into mapping, combining, and queueing stages.
 #    a. We will have to use temporary local storage (memory would be ideal to 
 #       prevent thrashing, though pluggable backends would be longer-term) to 
 #       store the keys and values.
@@ -272,7 +270,7 @@ class _StepProcessor(object):
 #    d. The default combiner will yield a key and list of values, for each 
 #       unique key. This will be what we store for the arguents to the next 
 #       step.
-# 4. We'll have to update the reducer to take a key and list of values.
+# 3. We'll have to update the reducer to take a key and list of values.
 #
 # * Since we'll almost always require a reflection step and the reducers and 
 #   mappers have identical function signatures, we might find a way to send the 
@@ -334,6 +332,8 @@ class _StepProcessor(object):
 
             _logger.debug("Mapper result [%s]: [%s]", 
                           handler_result.__class__.__name__, handler_result)
+
+#            assert issubclass(handler_result.__class__, dict) is True
 
             # Manage downstream steps that were mapped to (the handler was a 
             # generator).
