@@ -27,5 +27,5 @@ parent_invocation = mr.models.kv.invocation.get(workflow, args.parent_invocation
 
 ms = mr.models.kv.trees.mapped_steps.MappedStepsTree(workflow, parent_invocation)
 
-entities = ms.list_entities_and_meta()
+entities = ms.list_entities_and_data()
 pprint.pprint(list(entities))

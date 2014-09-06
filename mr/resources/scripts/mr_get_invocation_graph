@@ -6,7 +6,7 @@ dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '
 sys.path.insert(0, dev_path)
 
 import argparse
-import datetime
+import pprint
 
 import mr.config.log
 import mr.trace
@@ -39,7 +39,8 @@ print('')
 print('Graph:')
 print('')
 
-for (parent_invocation, child_invocation, meta) \
+for (child_invocation, argument_data, post_combine_data, post_reduce_data, 
+     parent_invocation) \
     in mr.trace.invocation_graph_gen(workflow, request):
         if child_invocation.direction == mr.constants.D_MAP:
             action_phrase = 'has been MAPPED to'
@@ -50,34 +51,24 @@ for (parent_invocation, child_invocation, meta) \
                              (child_invocation.invocation_id, 
                               child_invocation.direction))
 
-        if meta is not None:
-            when_queued_dt = datetime.datetime.utcfromtimestamp(meta['qt'])
-            when_queued_phrase = when_queued_dt.isoformat()
-
-            try:
-                result_phrase = meta['r']
-            except KeyError:
-                result_phrase = None
-
-            try:
-                when_completed_dt = datetime.datetime.utcfromtimestamp(meta['ct'])
-            except KeyError:
-                when_completed_phrase = None
-                duration_s = None
-            else:
-                when_completed_phrase = when_completed_dt.isoformat()
-                duration_s = (when_completed_dt - when_queued_dt).total_seconds()
-                duration_phrase = '%.6f' % (duration_s,)
-        else:
-            when_queued_phrase = None
-            result_phrase = None
-            duration_phrase = None
-
-        print("  [%s] [%s]  %s  [%s] [%s] => [%s] [%s]" % 
+        print("PARENT [%s] [%s]  (%s)  CHILD [%s] [%s]" % 
               (parent_invocation.invocation_id, parent_invocation.step_name,
                action_phrase, child_invocation.invocation_id, 
-               child_invocation.step_name, duration_phrase, 
-               result_phrase))
+               child_invocation.step_name))
+
+        print('')
+
+        print("Arguments:\n\n%s" % (pprint.pformat(argument_data),))
+
+        print('')
+
+        print("Post-Combine:\n\n%s" % (pprint.pformat(post_combine_data),))
+
+        print('')
+
+        print("Post-Reduce:\n\n%s" % (pprint.pformat(post_reduce_data),))
+
+        print('')
 
         if child_invocation.error is not None:
             print('')
@@ -86,8 +77,11 @@ for (parent_invocation, child_invocation, meta) \
             print('  %s' % (child_invocation.error,))
             print('')
 
+        print("=" * 20)
+
 print('')
-print("Result:")
-print('')
-print('  %s' % (request.result,))
-print('')
+
+#print("Result:")
+#print('')
+#print('  %s' % (request.result,))
+#print('')

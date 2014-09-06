@@ -10,4 +10,15 @@ argument_spec:
 handler_type: reducer
 """
 
-return sum([result['datum'] for result in results])
+print("handler2 results: %s" % (results,))
+
+tally = {}
+for k, value_list in results:
+    sum_ = sum(value_list)
+
+    try:
+        tally[k] += sum_
+    except KeyError:
+        tally[k] = sum_
+
+return tally.items()

@@ -9,7 +9,7 @@ _logger = logging.getLogger(__name__)
 
 
 class PythonProcessor(mr.handlers.processors.processor.Processor):
-    def compile(self, name, arg_names, code):
+    def compile(self, name, arg_names, code, scope={}):
         name = "(lambda handler '%s')" % (name,)
 
         # Needs to start with a letter. We don't want to use the actual name, 
@@ -35,8 +35,17 @@ class PythonProcessor(mr.handlers.processors.processor.Processor):
                           name, border, code.rstrip(), border)
 
         c = compile(code, name, 'exec')
+        
+        scope_final = {
+            '__builtins__': __builtins__, 
+            '__name__': '__handler__', 
+            '__doc__': None, 
+            '__package__': None
+        }
+        
+        scope_final.update(scope)
         locals_ = {}
-        exec(c, globals(), locals_)
+        exec(c, scope_final, locals_)
      
         f = locals_[id_]
 

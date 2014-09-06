@@ -5,7 +5,6 @@ import etcd.exceptions
 
 import mr.config.etcd
 import mr.models.kv.common
-import mr.compat
 
 logging.getLogger('etcd').setLevel(logging.INFO)
 
@@ -101,30 +100,58 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
             response.node.value
         )
 
-    @classmethod
-    def flatten_identity(cls, identity):
-        """Derive a key from the identity string. It can either be a flat 
-        string or a tuple of flat-strings. The latter will be collapsed to a
-        path name (for heirarchical storage). We may or may not do something
-        with hyphens in the future.
+
+class QueueLayerKv(mr.models.kv.common.CommonKv):
+    """Model a queue on top of the KV, where the queue guarantees that you will 
+    enumerate the children in the order that they were added. As we expect the 
+    KV to act more like persistent storage than a queue, we expect that the 
+    members will allow random/selective access, and not be removed until 
+    explicitly desired. Therefore, the only real difference between a queue and 
+    a normal directory, is the guaranteed ordering in the return.
+    """
+
+    def __init__(self, root_identity):
+        cls = self.__class__
+
+        self.__root_identity = root_identity
+        root_key = cls.flatten_identity(self.__root_identity)
+        self.__io = _etcd.inorder.get_inorder(root_key)
+
+        self.__dl = DataLayerKv()
+
+    @property
+    def root_identity(self):
+        return self.__root_identity
+
+    def add(self, encoded_data):
+        """This should return an ID for the queued item, so it can be recalled 
+        later.
         """
 
-        if issubclass(identity.__class__, tuple) is True:
-            for part in identity:
-                if issubclass(part.__class__, mr.compat.basestring) and \
-                   ('-' in part or '/' in part):
-                    raise ValueError("Identity has reserved characters: [%s]" % 
-                                     (identity,))
+        r = self.__io.add(encoded_data)
 
-            key = '/' + '/'.join([str(part) for part in identity])
-        else:
-            if issubclass(part.__class__, mr.compat.basestring) and \
-               ('-' in identity or '/' in identity):
-                raise ValueError("Identity has reserved characters: [%s]" % 
-                                 (identity,))
+        # With *etcd*, the name of the queued item is its modified-index.
+        return str(r.node.modified_index)
 
-            key = identity
+    def update(self, key, encoded_data):
+        self.__dl.update_only(
+            self.__root_identity + (key,), 
+            encoded_data)
 
-        _logger.debug("Flattening identity: [%s] => [%s]", identity, key)
+    def get(self, key):
+        return self.__dl.get(self.__root_identity + (key,))
 
-        return key
+    def list(self):
+        return self.__dl.list(self.__root_identity)
+
+    def list_keys(self):
+        return self.__dl.list_keys(self.__root_identity)
+
+    def list_data(self):
+        return (d for (k, d) in self.__dl.list(self.__root_identity))
+
+    def delete_key(self, key):
+        return self.__dl.delete(self.__root_identity + (key,))
+
+    def delete(self):
+        return self.__dl.directory_delete(self.__root_identity)

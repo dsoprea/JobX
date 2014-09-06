@@ -4,22 +4,24 @@ Yields many downstream steps
 **
 argument_spec:
     -
-        name: arg1
-        type: int
+        name: arguments
+        type: list
 
 handler_type: mapper
 """
 
 import random
 
-yield 'step5'
+arg_dict = dict(arguments)
 
-count = random.randrange(1, arg1)
+#yield MrConfigureToMap('step5')
+yield MrConfigureToReturn()
+
+count = random.randrange(1, arg_dict['arg1'])
 
 while count > 1:
     interval = random.randrange(1, count)
     count -= interval
 
-    yielded_step_args = { 'arg1': interval }
-
-    yield yielded_step_args
+    #yield ('arg1', interval)
+    yield (random.randrange(10), interval)

@@ -7,5 +7,5 @@ QUEUE_MESSAGE_PARAMETERS_CLS = collections.namedtuple(
                                      'request', 
                                      'job', 
                                      'step',
-                                     'handler',
-                                     'arguments'])
+                                     'handler'])#,
+                                     #'arguments'])

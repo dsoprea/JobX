@@ -15,7 +15,7 @@ class Invocation(mr.models.kv.model.Model):
 
     # For a mapping, this describes arguments. For a reduction or action step, 
     # this describes a list of one item: the result.
-    arguments = mr.models.kv.model.Field(is_required=False)
+#    arguments = mr.models.kv.model.Field(is_required=False)
 
     # The mapper will set this before it yields any downstream steps. Not set 
     # for other step-types.

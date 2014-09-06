@@ -2,6 +2,7 @@ import json
 
 ENTITY_ROOT = ('entities',)
 ENTITY_TREE_ROOT = ('entity_trees',)
+QUEUE_ROOT = ('queues',)
 
 REPR_DATA_TRUNCATE_WIDTH = 20
 

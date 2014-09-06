@@ -2,7 +2,6 @@ import logging
 
 import mr.config.kv
 import mr.models.kv.data_layer
-import mr.compat
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
@@ -36,6 +35,18 @@ class Tree(mr.models.kv.common.CommonKv):
 
         raise NotImplementedError()
 
+    def get_child_model_entity(self, child_name):
+        """Returns the model object for the given child."""
+
+        raise NotImplementedError()
+
+    def get_name_from_child_entity(self, entity):
+        """Derive the name/key from the given entity, with which to represent 
+        the child.
+        """
+
+        raise NotImplementedError()
+
     def __get_root_identity(self):
         try:
             return self.__root_identity
@@ -56,59 +67,60 @@ class Tree(mr.models.kv.common.CommonKv):
 
             return self.__root_identity
 
-    def get_child_model_entity(self, child_name):
-        """Returns the model object for the given child."""
+    def add(self, name, data={}):
+        identity = self.__get_root_identity() + (name,)
+        return _dl.create_only(identity, mr.config.kv.ENCODER(data))
 
-        raise NotImplementedError()
+    def get_data(self, name):
+        identity = self.__get_root_identity() + (name,)
+        (state, encoded_data) = _dl.get(identity)
+        return mr.config.kv.DECODER(encoded_data)
 
-    def get_name_from_child_entity(self, entity):
-        """Derive the name/key from the given entity, with which to represent 
-        the child.
-        """
+    def get_data_for_entity(self, entity):
+        name = self.get_name_from_child_entity(entity)
+        identity = self.__get_root_identity() + (name,)
+        (state, encoded_data) = _dl.get(identity)
+        return mr.config.kv.DECODER(encoded_data)
 
-        raise NotImplementedError()
+    def add_entity(self, entity, data={}):
+        name = self.get_name_from_child_entity(entity)
+        return self.add(name, data)
 
-    def list_names(self):
+    def update(self, name, data={}):
+        identity = self.__get_root_identity() + (name,)
+        return _dl.update_only(identity, mr.config.kv.ENCODER(data))
+
+    def update_entity(self, entity, data={}):
+        name = self.get_name_from_child_entity(entity)
+        return self.update(name, data)
+
+    def list(self):
+        identity = self.__get_root_identity()
+        for name, encoded_data in _dl.list(identity):
+            yield (name, mr.config.kv.DECODER(encoded_data))
+
+    def list_keys(self):
         """Yield each the path names of each child."""
 
         identity = self.__get_root_identity()
         return _dl.list_keys(identity)
 
-    def add_child(self, name, meta={}):
-        identity = self.__get_root_identity() + (name,)
-        return _dl.create_only(identity, mr.config.kv.ENCODER(meta))
-
-    def get_child_meta(self, name):
-        identity = self.__get_root_identity() + (name,)
-        (state, encoded_meta) = _dl.get(identity)
-        return mr.config.kv.DECODER(encoded_meta)
-
-    def add_child_entity(self, entity, meta={}):
-        name = self.get_name_from_child_entity(entity)
-        return self.add_child(name, meta)
-
-    def update_child(self, name, meta={}):
-        identity = self.__get_root_identity() + (name,)
-        return _dl.update_only(identity, mr.config.kv.ENCODER(meta))
-
-    def update_child_entity(self, entity, meta={}):
-        name = self.get_name_from_child_entity(entity)
-        return self.update_child(name, meta)
-
-    def list_entities_and_meta(self):
+    def list_data(self):
         identity = self.__get_root_identity()
-        for name, encoded_meta in _dl.list(identity):
-            yield (self.get_child_model_entity(name), encoded_meta)
+        for name, encoded_data in _dl.list(identity):
+            yield mr.config.kv.DECODER(encoded_data)
 
     def list_entities(self):
         identity = self.__get_root_identity()
         for name in _dl.list_keys(identity):
             yield self.get_child_model_entity(name)
 
-    def list(self):
+    def list_entities_and_data(self):
         identity = self.__get_root_identity()
-        for name, encoded_meta in _dl.list(identity):
-            yield (name, mr.config.kv.DECODER(encoded_meta))
+        return ((self.get_child_model_entity(name), 
+                 encoded_data) 
+                for name, encoded_data 
+                in _dl.list(identity))
 
     def create(self):
         identity = self.__get_root_identity()

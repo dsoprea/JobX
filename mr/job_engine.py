@@ -5,6 +5,8 @@ import types
 import traceback
 import json
 import time
+import pprint
+import itertools
 
 import gevent.pool
 
@@ -16,12 +18,13 @@ import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.handler
 import mr.models.kv.invocation
-import mr.models.kv.trees.mapped_steps
 import mr.models.kv.trees.invocations
+import mr.models.kv.queues.dataset
 import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.shared_types
 import mr.constants
+import mr.handlers.scope
 
 _logger = logging.getLogger(__name__)
 
@@ -104,7 +107,7 @@ class _QueuePusher(object):
                         workflow, 
                         message_parameters.invocation)
 
-        parent_tree.add_child(reduce_invocation.invocation_id)
+        parent_tree.add_entity(reduce_invocation)
 
         # Queue the reduction.
 # TODO(dustin): We would prefer to derive the message-parameters *from* the 
@@ -116,8 +119,8 @@ class _QueuePusher(object):
             request=message_parameters.request,
             job=message_parameters.job,
             step=reduce_step,
-            handler=reduce_step.reduce_handler_name,
-            arguments=None)
+            handler=reduce_step.reduce_handler_name)#,
+            #arguments=None)
 
         assert reduce_parameters.handler is not None
 
@@ -150,23 +153,16 @@ class _StepProcessor(object):
     by the time we're called.
     """
 
-    def __queue_map_step(self, mapped_steps_tree, next_step, next_arguments, 
-                         original_parameters):
+    def __queue_map_step(self, next_step, kv_tuple, original_parameters):
         request = original_parameters.request
         workflow = original_parameters.workflow
         job = original_parameters.job
         step = original_parameters.step
         invocation = original_parameters.invocation
 
-        _logger.debug("Queueing mapped step from invocation [%s] and step [%s] to next (downstream) step [%s]",
-                      invocation.invocation_id, step.step_name, next_step.step_name)
-
         next_handler = mr.models.kv.handler.get(
-                            workflow, 
-                            next_step.map_handler_name)
-        
-        next_arguments = dict(next_handler.cast_arguments(
-                                            next_arguments))
+                        workflow, 
+                        next_step.map_handler_name)
 
         # The next invocation will have this [mapping] step as a parent.
         map_invocation = mr.models.kv.invocation.Invocation(
@@ -174,13 +170,26 @@ class _StepProcessor(object):
                                 workflow_name=workflow.workflow_name,
                                 parent_invocation_id=invocation.invocation_id,
                                 step_name=next_step.step_name,
-                                arguments=next_arguments,
+#                                arguments=next_arguments,
                                 direction=mr.constants.D_MAP)
 
 # TODO(dustin): Debugging.
         assert map_invocation.parent_invocation_id is not None
 
         map_invocation.save()
+
+        # Store the arguments for the new invocation.
+
+        dq = mr.models.kv.queues.dataset.DatasetQueue(
+                workflow, 
+                map_invocation, 
+                mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+        data = {
+            'p': kv_tuple,
+        }
+
+        dq.add(data)
 
         # Create a tracking tree for this new invocation.
 
@@ -196,19 +205,9 @@ class _StepProcessor(object):
                         workflow, 
                         invocation)
 
-        parent_tree.add_child(map_invocation.invocation_id)
+        parent_tree.add_entity(map_invocation)
 
         # Queue the mapping.
-
-        _logger.debug("Mapped invocation: [%s] => [%s]",
-                      invocation.invocation_id, map_invocation.invocation_id)
-
-        meta = {
-            # Queued time
-            'qt': time.time(),
-        }
-
-        mapped_steps_tree.add_child(map_invocation.invocation_id, meta=meta)
 
         mapped_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
             workflow=workflow,
@@ -216,13 +215,78 @@ class _StepProcessor(object):
             request=request,
             job=job,
             step=next_step,
-            handler=next_handler,
-            arguments=next_arguments)
+            handler=next_handler)#,
+#            arguments=next_arguments)
 
-        _get_pusher().queue_map_step_from_parameters(mapped_parameters)
+        pusher = _get_pusher()
+        pusher.queue_map_step_from_parameters(mapped_parameters)
 
-    def __map_downstream(self, handler_name, handler_result_gen,
-                         workflow, invocation, message_parameters):
+    def __call_handler(self, workflow, handler_name, arguments):
+        wm = mr.workflow_manager.get_wm()
+        managed_workflow = wm.get(workflow.workflow_name)
+        handlers = managed_workflow.handlers
+
+        _logger.debug("Calling handler [%s] under workflow [%s].", 
+                      handler_name, workflow.workflow_name)
+
+        return handlers.run_handler(handler_name, arguments)
+
+    def __default_combiner(self, map_result_gen):
+        """The default combiner: group by key."""
+
+        if mr.config.IS_DEBUG is True:
+            map_result_gen = list(map_result_gen)
+            _logger.debug("Combining (default):\n%s", 
+                          pprint.pformat(map_result_gen))
+
+        # itertools.groupby() requires it to be sorted, first.
+        sorted_result_gen = (p 
+                             for p 
+                             in sorted(
+                                    map_result_gen, 
+                                    key=lambda x: x[0]))
+
+        if mr.config.IS_DEBUG is True:
+            sorted_result_gen = list(sorted_result_gen)
+            _logger.debug("Pre-combine sort:\n%s",
+                          pprint.pformat(sorted_result_gen))
+
+        grouped_result_gen = itertools.groupby(
+                                sorted_result_gen, 
+                                lambda x: x[0])
+
+        def make_distilled_result_gen():
+            for k, value_list in grouped_result_gen:
+                yield (k, (v for (_, v) in value_list))
+
+        distilled_result_gen = make_distilled_result_gen()
+
+        if mr.config.IS_DEBUG is True:
+            distilled_result_gen = [(k, list(value_list)) 
+                                    for (k, value_list) 
+                                    in distilled_result_gen]
+
+            _logger.debug("Combiner result:\n%s", 
+                          pprint.pformat(distilled_result_gen))
+
+        return distilled_result_gen
+
+    def __apply_combiner(self, workflow, current_step, map_result_gen):
+        combine_handler_name = current_step.combine_handler_name
+
+        if combine_handler_name is not None:
+            combine_handler = functools.partial(
+                                self.__call_handler, 
+                                workflow, 
+                                combine_handler_name)
+
+            return combine_handler(map_result_gen)
+        else:
+            return self.__default_combiner(map_result_gen)
+
+    def __map_to_downstream(self, mapped_step_name, handler_name, 
+                            mapped_steps_gen, workflow, invocation, 
+                            message_parameters):
         """A mapping step has completed and has mapped into one or more 
         downstream steps. Queue the downstream steps to be handled and tracked.
         """
@@ -230,7 +294,6 @@ class _StepProcessor(object):
         assert invocation.mapped_count is None
         assert invocation.mapped_waiting is None
 
-        mapped_step_name = next(handler_result_gen)
         mapped_step = mr.models.kv.step.get(workflow, mapped_step_name)
 
         # This has to be an integer just in case one of the downstream steps 
@@ -239,65 +302,38 @@ class _StepProcessor(object):
         invocation.mapped_waiting = 0
         invocation.save()
 
-        # Create a home for the mapping tree, for the parent's invocation 
-        # record.
-
-        mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                workflow, 
-                invocation)
-
-        mst.create()
-
         i = 0
-        for mapped_arguments in handler_result_gen:
-# TODO(dustin): !! We're not guaranteed an order when retrieving this. 
-#               Hopefully, we can refactor to use in-order queues. Otherwise, 
-#               we'll have to store the indices, which we won't be able to 
-#               reassemble the data with efficiently.
+        for (k, v) in mapped_steps_gen:
+# TODO(dustin): We'll have to update the reducer to take a key and list of values.
 
-# TODO(dustin): In order to implement combiners, we will:
-# 1. Split the following into mapping, combining, and queueing stages.
-#    a. We will have to use temporary local storage (memory would be ideal to 
-#       prevent thrashing, though pluggable backends would be longer-term) to 
-#       store the keys and values.
-#    b. We will pass these through the combiner, sorted by key.
-#    c. The default combiner will check for successive duplicates, and group 
-#       based on this. It might be just as efficient to just push them into a 
-#       dictionary (they won't have to be fully collected in memory first, and 
-#       hashing will be quicker, if duplicates are all that matter forthe 
-#       default implementation).
-#    d. The default combiner will yield a key and list of values, for each 
-#       unique key. This will be what we store for the arguents to the next 
-#       step.
-# 2. We'll have to update the reducer to take a key and list of values.
-#
-# * Since we'll almost always require a reflection step and the reducers and 
-#   mappers have identical function signatures, we might find a way to send the 
-#   yielded data directly from the mapper to the combiner to the reducer. We 
-#   might yield a "None" for the next step (if we refactor to have to yield the 
-#   name of the next step at the top of the handler).
+            _logger.debug("Queueing mapping (%d) from invocation [%s].",
+                          i, invocation.invocation_id)
+
             self.__queue_map_step(
-                    mst,
                     mapped_step, 
-                    mapped_arguments, 
+                    (k, v), 
                     message_parameters)
 
             i += 1
 
         step_count = i
 
-        # Now, update the number of mapped steps into the invocation. Because 
-        # we either decrement or add maximum positive value, and the value of 
-        # mapped_waiting will never be glimpsed before decrementing it, there 
-        # won't be any chance of a completed step seeing the mappd_waiting 
-        # value equal zero more than once (which is our trigger for a 
-        # reduction), which will be the very last manipulation it counters.
+        # Now, update the number of mapped steps into the invocation. 
+        #
+        # Because we either decrement or add maximum positive value, and the 
+        # value of mapped_waiting will never be glimpsed before decrementing 
+        # it, there won't be any chance of a completed step seeing the 
+        # mappd_waiting value equal zero more than once (which is our trigger 
+        # for a reduction), which will be the very last manipulation it 
+        # counters.
 
         _logger.debug("Invocation [%s] has mapped (%d) steps.", 
                       invocation.invocation_id, step_count)
-# We might need to check for whether a reduction is necessary here. By the time 
-# we get here, we could've potentially finished all steps, which nothing else 
-# checking for (0) waiting-steps.
+
+# TODO(dustin): We might need to check for whether a reduction is necessary 
+#               here. By the time we get here, we could've potentially finished 
+#               all steps, which nothing else checking for (0) waiting-steps.
+
         invocation = self.__add_mapped_steps(
                         workflow, 
                         invocation, 
@@ -308,6 +344,102 @@ class _StepProcessor(object):
                       invocation.invocation_id, invocation.mapped_count, 
                       invocation.mapped_waiting)
 
+    def __map_collect_result(self, handler_name, handler_result_gen, workflow, 
+                             invocation, message_parameters):
+        """The mapper returned a generator of key-value pairs (rather than 
+        mapping to another downstream step). This is essentially an invocation
+        "leaf" that will end any branching activity, and either contribute one
+        child of a step that mapped or complete the request.
+        """
+
+        # Wrap the result generator in a combiner generator. By the time we get 
+        # the data, it'll already be combined.
+        #
+        # This ensures that we have the opportunity to flatten the data between 
+        # descending map operations. Note that the default combiner groups by 
+        # key, but does not flatten the value (concatenation, summing, etc..). 
+        # So, descending maps will be grouped, grouped a second time, grouped a 
+        # third time, etc.. It's probably almost always desired to provide a 
+        # combiner if we have more than one dimension of steps.
+        map_result_gen = self.__apply_combiner(
+                            workflow, 
+                            message_parameters.step, 
+                            handler_result_gen)
+
+        _logger.debug("Writing result-set for invocation: [%s]", 
+                      invocation.invocation_id)
+
+        dq = mr.models.kv.queues.dataset.DatasetQueue(
+                workflow, 
+                invocation,
+                mr.models.kv.queues.dataset.DT_POST_COMBINE)
+
+        if mr.config.IS_DEBUG is True:
+            map_result_gen = [(k, list(v)) for (k, v) in map_result_gen]
+            _logger.debug("Result to be stored:\n%s", 
+                          pprint.pformat(map_result_gen))
+
+        i = 0
+        for (k, value_list) in map_result_gen:
+            data = { 
+                'k': k,
+                'vl': list(value_list),
+            }
+
+            dq.add(data)
+            i += 1
+
+        _logger.debug("Result-set of size (%d) written for invocation [%s]. "
+                      "Queueing reduction.", i, invocation.invocation_id)
+
+        # We're here because a map operation rendered a result (and did not map 
+        # further downstream). It's tempting to want to reduce here, but we'd 
+        # end up compromising the whole concept of map-reduce, and we might 
+        # potential be processing a high-cost mapping *and* a high-cost 
+        # reduction within the same invocation.
+
+        pusher = _get_pusher()
+
+        # Do a reduction with this invocation as the parent (it will access our 
+        # results).
+        pusher.queue_reduce_step_from_parameters(
+            message_parameters, 
+            invocation)
+
+
+
+
+
+#        if invocation.parent_invocation_id is not None:
+#            _logger.debug("Decrementing mapped_waiting counter on the parent "
+#                          "[%s] of the map-step [%s] that rendered a result.",
+#                          invocation.parent_invocation_id, 
+#                          invocation.invocation_id)
+#
+#            parent_invocation = self.__decrement_parent_invocation(
+#                                    workflow,
+#                                    invocation)
+#
+#            if parent_invocation.mapped_waiting == 0:
+#                pusher = _get_pusher()
+#
+#                # Do a reduction with this invocation as the parent (it will access our 
+#                # results).
+#                pusher.queue_reduce_step_from_parameters(
+#                    message_parameters, 
+#                    invocation)
+#        else:
+#            # We've reduced our way back up to the original request.
+#
+#            request = message_parameters.request
+#
+#            _logger.debug("No further parents for mapped-step [%s]. Marking "
+#                          "request as complete: [%s]", 
+#                          invocation.invocation_id, request.request_id)
+#
+#            request.done = True
+#            request.save()
+
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
 
@@ -316,106 +448,70 @@ class _StepProcessor(object):
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
         
-        wm = mr.workflow_manager.get_wm()
-        managed_workflow = wm.get(workflow.workflow_name)
-        handlers = managed_workflow.handlers
-
         _logger.debug("Processing MAP: [%s]", invocation.invocation_id)
 
         try:
             # Call the handler.
-            
-            handler_result = handlers.run_handler(
-                                step.map_handler_name, 
-                                message_parameters.arguments)
 
-            _logger.debug("Mapper result [%s]: [%s]", 
-                          handler_result.__class__.__name__, handler_result)
+            dq = mr.models.kv.queues.dataset.DatasetQueue(
+                    workflow, 
+                    invocation, 
+                    mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+            # Enumerate the 'p' member of every record.
+            arguments = (d['p'] for d in dq.list_data())
+
+            if mr.config.IS_DEBUG is True:
+                arguments = list(arguments)
+                _logger.debug("Sending arguments to mapper:\n%s", 
+                              pprint.pformat(arguments))
+
+            wrapped_arguments = {
+                'arguments': arguments,
+            }
+
+            handler_result_gen = self.__call_handler(
+                                    workflow, 
+                                    step.map_handler_name, 
+                                    wrapped_arguments)
+
+            path_type = next(handler_result_gen)
+
+            _logger.debug("Mapper [%s] path-type: [%s]", 
+                          invocation.invocation_id, 
+                          path_type.__class__.__name__)
+
+            assert issubclass(
+                    path_type.__class__, 
+                    mr.handlers.scope.MrConfigure) is True
 
             # Manage downstream steps that were mapped to (the handler was a 
             # generator).
 
             if issubclass(
-               handler_result.__class__, 
-               types.GeneratorType) is True:
-                self.__map_downstream(
+                   path_type.__class__, 
+                   mr.handlers.scope.MrConfigureToMap) is True:
+# TODO(dustin): This still needs to be checked for proper connectivity between other mappers, the combiner, and the reducer.
+                self.__map_to_downstream(
+                    path_type.next_step_name,
                     step.map_handler_name, 
-                    handler_result,
+                    handler_result_gen,
                     workflow, 
                     invocation, 
                     message_parameters)
-            else:
-                assert issubclass(handler_result.__class__, dict) is True
-
-                # The step didn't yield, so it must've done some work and 
-                # returned a result. Store it.
-
-                if invocation.parent_invocation_id is not None:
-                    # We were mapped-to from another invocation.
-
-                    _logger.debug("Storing result to parent-invocation with ID: [%s]", 
-                                  invocation.parent_invocation_id)
-
-                    parent_invocation = mr.models.kv.invocation.get(
-                                            workflow, 
-                                            invocation.parent_invocation_id)
-
-                    mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                            workflow, 
-                            parent_invocation)
-
-                    meta = mst.get_child_meta(invocation.invocation_id)
-
-                    # Result
-                    meta['r'] = handler_result
-                        
-                    # Completed time
-                    meta['ct'] = time.time()
-
-                    mst.update_child(invocation.invocation_id, meta=meta)
-
-                    # Decrement the "waiting" counter on the parent.
-
-                    parent_invocation = self.__decrement_parent_invocation(
-                                            workflow,
-                                            invocation)
-
-                    # It might be negative if the total number of steps has 
-                    # already been added to it or negative if not and steps are 
-                    # already being processed, but, if it's exactly zero, we're 
-                    # done.
-                    if parent_invocation.mapped_waiting == 0:
-                        _logger.debug("REFLECTION: Handler for MAPPING "
-                                      "returned a result, and all (%d) "
-                                      "results have been rendered for parent. "
-                                      "Reducing for parent [%s].", 
-                                      parent_invocation.mapped_count, 
-                                      parent_invocation.invocation_id)
-
-                        pusher = _get_pusher()
-                        pusher.queue_reduce_step_from_parameters(
-                            message_parameters, 
-                            parent_invocation)
-                    else:
-                        _logger.debug("Parent invocation [%s] mapped-waiting "
-                                      "count after ACTION: (%d)", 
-                                      parent_invocation.invocation_id, 
-                                      parent_invocation.mapped_waiting)
-                else:
-                    # We were called directly from the initial-step of the 
-                    # request. There is no tree of results. There was no 
-                    # mapping. Post the one result to the request.
-
-                    _logger.debug("Storing unmapped handler result to "
-                                  "request: [%s]", handler_result)
-
-                    request.result = handler_result
-                    request.save()
+            elif issubclass(
+                    path_type.__class__, 
+                    mr.handlers.scope.MrConfigureToReturn) is True:
+                self.__map_collect_result(
+                    step.map_handler_name,
+                    handler_result_gen,
+                    workflow, 
+                    invocation,
+                    message_parameters)
         except:
 # TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
-# TODO(dustin): This is trying to create the record.
             invocation.save()
 
             raise
@@ -462,10 +558,6 @@ class _StepProcessor(object):
 
         assert step.reduce_handler_name is not None
 
-        wm = mr.workflow_manager.get_wm()
-        managed_workflow = wm.get(workflow.workflow_name)
-        handlers = managed_workflow.handlers
-
         # The parent of the current invocation is the invocation that had all 
         # of the mappings to be reduced.
 
@@ -480,83 +572,99 @@ class _StepProcessor(object):
             # Call the handler with a generator of all of the results to be 
             # reduced.
 
-            mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
+            dq = mr.models.kv.queues.dataset.DatasetQueue(
                     workflow, 
-                    parent_invocation)
+                    parent_invocation,
+                    mr.models.kv.queues.dataset.DT_POST_COMBINE)
 
-            children_gen = mst.list_entities_and_meta()
+            results_gen = dq.list_data()
 
             if mr.config.IS_DEBUG is True:
-                children_gen = list(children_gen)
+                results_gen = list(results_gen)
 
                 _logger.debug("(%d) results will be reduced by step [%s] for "
                               "original invocation [%s].",
-                              len(children_gen), step.reduce_handler_name, 
+                              len(results_gen), step.reduce_handler_name, 
                               parent_invocation.invocation_id)
                 
                 print('')
-                for (i, (child_invocation, encoded_meta)) \
-                    in enumerate(children_gen):
-                        meta = json.loads(encoded_meta)
-                        print("Result (%d): [%s] %s" % 
-                              (i, child_invocation.invocation_id, 
-                               meta['r']))
+                for (i, data) in enumerate(results_gen):
+                    print("Result (%d)\nKey: %s\n Value List: %s" % 
+                          (i, data['k'], data['vl']))
 
                 print('')
 
-# TODO(dustin): Our mechanics still aren't guaranteeing the order of the results.
-            results_gen = (json.loads(encoded_meta)['r']
-                           for (child_invocation, encoded_meta) 
-                           in children_gen)
+            results_gen = ((data['k'], data['vl']) for data in results_gen)
 
-            arguments = {
+            handler_arguments = {
                 'results': results_gen,
             }
 
-            handler_result = handlers.run_handler(
-                                step.reduce_handler_name, 
-                                arguments)
+            reduce_result_gen = self.__call_handler(
+                                    workflow,
+                                    step.reduce_handler_name, 
+                                    handler_arguments)
 
-            _logger.debug("Handler [%s] reduction [%s] result: [%s]", 
-                          step.reduce_handler_name, invocation.invocation_id, 
-                          handler_result)
+            if mr.config.IS_DEBUG is True:
+                reduce_result_gen = list(reduce_result_gen)            
+                _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
+                              step.reduce_handler_name, invocation.invocation_id, 
+                              pprint.pformat(reduce_result_gen))
+
+            # Store result
+
+            _logger.debug("Storing reduction result to parent: "
+                          "[%s] [%s]", 
+                          parent_invocation.invocation_id,
+                          parent_invocation.direction)
+
+            parent_dq = mr.models.kv.queues.dataset.DatasetQueue(
+                            workflow, 
+                            parent_invocation,
+                            mr.models.kv.queues.dataset.DT_POST_REDUCE)
+
+            for (k, v) in reduce_result_gen:
+                data = {
+                    # Pair
+                    'p': (k, v),
+                }
+
+                parent_dq.add(data)
 
             if parent_invocation.parent_invocation_id is not None:
+                # This is the result of a reduction of all of the mapped steps 
+                # that fed us. Therefore, its their parent that owns our result
+                # and must receive it.
+
                 parent_parent_invocation = mr.models.kv.invocation.get(
                                             workflow, 
                                             parent_invocation.parent_invocation_id)
 
-                # Store the result from the reduction of mapped steps of our 
-                # parent, to *its* parent.
-
-                mst = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                        workflow, 
-                        parent_parent_invocation)
-
-                meta = mst.get_child_meta(parent_invocation.invocation_id)
-
-                # Result
-                meta['r'] = handler_result
-                
-                # Completed
-                meta['ct'] = time.time()
-
-                mst.update_child(parent_invocation.invocation_id, meta=meta)
-
-                # Decrement the "waiting" counter on the parent, or notify that 
-                # the job is done.
+                # Decrement the "waiting" counter on the parent of the parent 
+                # (the step that mapped the steps that produced the results 
+                # that we're reducing), or notify that the job is done (if 
+                # there is no parent's parent).
 
                 self.__decrement_parent_invocation(
                     workflow,
                     parent_invocation)
 
                 if parent_parent_invocation.mapped_waiting == 0:
+                    # We've posted the reduction of the results of our map step 
+                    # to its parent, and all mapped steps of that parent have 
+                    # now been reported.
+
                     _logger.debug("Handler for REDUCTION returned a result, "
                                   "and all results have been rendered for "
                                   "parent-parent. Reducing for parent [%s].", 
-                                  parent_invocation.invocation_id)
+                                  parent_parent_invocation.invocation_id)
 
-                    _get_pusher().queue_reduce_step_from_parameters(
+                    pusher = _get_pusher()
+
+                    # Queue a reduction with our parent's parent (the parent of 
+                    # the original mapping). It will access all of the results 
+                    # that have been posted back to it.
+                    pusher.queue_reduce_step_from_parameters(
                         message_parameters, 
                         parent_parent_invocation)
                 else:
@@ -567,10 +675,12 @@ class _StepProcessor(object):
             else:
                 # We've reduced our way back up to the original request.
 
-                _logger.debug("Storing final reduction result to request: "
-                              "[%s]", handler_result)
+                _logger.debug("No further parents. Marking request as "
+                              "complete: [%s]", request.request_id)
 
-                request.result = handler_result
+# TODO(dustin): We're not currently storing the result.
+
+                request.done = True
                 request.save()
         except:
 # TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
@@ -602,11 +712,31 @@ class _RequestReceiver(object):
         _logger.debug("Blocking on result for request: [%s]", 
                       request.request_id)
 
-        r = request.wait_for_change()
+        # The object is replaced with a newer one, when a change happens.
+        request = request.wait_for_change()
+
+        _logger.debug("Reading result from: [%s] [%s]",
+                      message_parameters.invocation.invocation_id,
+                      message_parameters.invocation.direction)
+
+        dq = mr.models.kv.queues.dataset.DatasetQueue(
+                message_parameters.workflow, 
+                message_parameters.invocation, 
+                mr.models.kv.queues.dataset.DT_POST_REDUCE)
+
+        results = list(dq.list_data())
+
+        _logger.debug("Retrieved result for request:\n%s", results)
+
+        result_pairs = [d['p'] for d in results]
+
+        if mr.config.IS_DEBUG is True:
+            _logger.debug("Result to return for request:\n%s", 
+                          pprint.pformat(result_pairs))
 
         return { 
             'request_id': request.request_id,
-            'result': r.result,
+            'result': result_pairs,
         }
 
     def process_request(self, message_parameters):

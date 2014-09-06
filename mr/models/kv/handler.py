@@ -11,9 +11,12 @@ _logger = logging.getLogger(__name__)
 # Handler types.
 HT_MAPPER = 'mapper'
 HT_REDUCER = 'reducer'
+HT_COMBINER = 'combiner'
 
-HANDLER_TYPES = (HT_MAPPER, HT_REDUCER)
+HANDLER_TYPES = (HT_MAPPER, HT_COMBINER, HT_REDUCER)
 
+_MAPPER_ARGS_S = set(['arguments'])
+_COMBINER_ARGS_S = set(['results'])
 _REDUCER_ARGS_S = set(['results'])
 
 
@@ -41,10 +44,21 @@ class Handler(mr.models.kv.model.Model):
         return (self.workflow_name, self.handler_name)
 
     def presave(self):
-        if self.handler_type == HT_REDUCER:
-            defined_arguments_s = set([x[0] for x in self.argument_spec])
+        defined_arguments_s = set([x[0] for x in self.argument_spec])
+
+        if self.handler_type == HT_MAPPER:
+            if defined_arguments_s != _MAPPER_ARGS_S:
+                raise ValueError("Can not save MAPPER handler with invalid "
+                                 "defined arguments: [%s] != [%s]" % 
+                                 (defined_arguments_s, _MAPPER_ARGS_S))
+        elif self.handler_type == HT_COMBINER:
+            if defined_arguments_s != _COMBINER_ARGS_S:
+                raise ValueError("Can not save COMBINER handler with invalid "
+                                 "defined arguments: [%s] != [%s]" % 
+                                 (defined_arguments_s, _COMBINER_ARGS_S))
+        elif self.handler_type == HT_REDUCER:
             if defined_arguments_s != _REDUCER_ARGS_S:
-                raise ValueError("Can not save reducer handler with invalid "
+                raise ValueError("Can not save REDUCER handler with invalid "
                                  "defined arguments: [%s] != [%s]" % 
                                  (defined_arguments_s, _REDUCER_ARGS_S))
 
@@ -64,8 +78,8 @@ class Handler(mr.models.kv.model.Model):
 
         if actual_args_s != required_args_s:
             raise ValueError("Given arguments do not match required "
-                             "arguments: [%s] != [%s]", 
-                             actual_args_s, required_args_s)
+                             "arguments: [%s] != [%s]" % 
+                             (actual_args_s, required_args_s))
 
         distilled = {}
         for name, type_name in self.argument_spec:

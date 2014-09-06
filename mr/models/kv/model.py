@@ -21,9 +21,11 @@ class ValidationError(Exception):
 
 
 class Field(object):
-    def __init__(self, is_required=True, default_value=None):
+    def __init__(self, is_required=True, default_value=None, empty_value=None):
+# TODO(dustin): Check the existing field assignments to determine if we need to adjust their default_value or empty_value parameters (if given).
         self.__is_required = is_required
         self.__default_value = default_value
+        self.__empty_value = empty_value
 
     def validate(self, name, value):
         """Raise ValidationError on error."""
@@ -31,7 +33,7 @@ class Field(object):
         pass
 
     def is_empty(self, value):
-        return value == self.default_value or value is None
+        return value == self.__empty_value or value is None
 
     @property
     def is_required(self):

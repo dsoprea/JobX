@@ -85,10 +85,17 @@ def _scan_files(path, workflow_name, simulate_only=False):
         except KeyError:
             used_handlers[step.map_handler_name].append(step.step_name)
 
-        try:
-            used_handlers[step.reduce_handler_name] = [step.step_name]
-        except KeyError:
-            used_handlers[step.reduce_handler_name].append(step.step_name)
+        if step.reduce_handler_name is not None:
+            try:
+                used_handlers[step.reduce_handler_name] = [step.step_name]
+            except KeyError:
+                used_handlers[step.reduce_handler_name].append(step.step_name)
+
+        if step.combine_handler_name is not None:
+            try:
+                used_handlers[step.combine_handler_name] = [step.step_name]
+            except KeyError:
+                used_handlers[step.combine_handler_name].append(step.step_name)
 
     # Remove handlers that we didn't find source-code for.
 

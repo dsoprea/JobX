@@ -1,7 +1,8 @@
 import logging
-
 import hashlib
 import random
+
+import mr.compat
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
@@ -31,3 +32,32 @@ class CommonKv(object):
         # unique, we'll just ignore entity_class.
 
         return hashlib.sha1(str(random.random()).encode('ASCII')).hexdigest()
+
+
+    @classmethod
+    def flatten_identity(cls, identity):
+        """Derive a key from the identity string. It can either be a flat 
+        string or a tuple of flat-strings. The latter will be collapsed to a
+        path name (for heirarchical storage). We may or may not do something
+        with hyphens in the future.
+        """
+
+        if issubclass(identity.__class__, tuple) is True:
+            for part in identity:
+                if issubclass(part.__class__, mr.compat.basestring) and \
+                   ('-' in part or '/' in part):
+                    raise ValueError("Identity has reserved characters: [%s]" % 
+                                     (identity,))
+
+            key = '/' + '/'.join([str(part) for part in identity])
+        else:
+            if issubclass(part.__class__, mr.compat.basestring) and \
+               ('-' in identity or '/' in identity):
+                raise ValueError("Identity has reserved characters: [%s]" % 
+                                 (identity,))
+
+            key = identity
+
+        _logger.debug("Flattening identity: [%s] => [%s]", identity, key)
+
+        return key

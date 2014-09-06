@@ -29,5 +29,5 @@ invocation = mr.models.kv.invocation.get(workflow, args.invocation_id)
 
 ms = mr.models.kv.trees.mapped_steps.MappedStepsTree(workflow, parent_invocation)
 
-r = ms.add_child_entity(invocation)
+r = ms.add_entity(invocation)
 print(r)

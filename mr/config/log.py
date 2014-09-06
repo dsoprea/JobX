@@ -4,10 +4,13 @@ import os
 
 import mr.config
 
+#logging.getLogger().setLevel(logging.WARNING)
+#logging.getLogger('mr').setLevel(logging.DEBUG)
+
 _FMT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 _FORMATTER = logging.Formatter(_FMT)
 
-logger = logging.getLogger()
+logger = logging.getLogger()#'mr')
 
 ch = logging.StreamHandler()
 ch.setFormatter(_FORMATTER)

@@ -1,0 +1,59 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+
+import mr.config.log
+import mr.models.kv.invocation
+import mr.models.kv.queues.dataset
+
+description = "Print the invocation-graph for a request"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('invocation_id', help='Invocation ID')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+invocation_id = args.invocation_id
+
+while invocation_id is not None:
+    invocation = mr.models.kv.invocation.get(workflow, invocation_id)
+
+    dqa = mr.models.kv.queues.dataset.DatasetQueue(
+        workflow, 
+        invocation,
+        mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+    try:
+        dqa.list_data()
+    except KeyError:
+        has_arguments = True
+    else:
+        has_arguments = False
+
+    dqr = mr.models.kv.queues.dataset.DatasetQueue(
+        workflow, 
+        invocation,
+        mr.models.kv.queues.dataset.DT_POST_REDUCE)
+
+    try:
+        dqr.list_data()
+    except KeyError:
+        has_results = True
+    else:
+        has_results = False
+
+    direction_phrase = '[%s]' % invocation.direction
+
+    print("Invocation: [%s] %8s HAS_ARGS=[%s] HAS_RESULTS=[%s] PARENT=[%s]" % 
+          (invocation.invocation_id, direction_phrase, 
+           has_arguments, has_results, invocation.parent_invocation_id))
+
+    invocation_id = invocation.parent_invocation_id

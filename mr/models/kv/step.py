@@ -36,6 +36,7 @@ class Step(mr.models.kv.model.Model):
 #               "_reduce" (or just "_<classification>") to these handlers' 
 #               names.
     map_handler_name = mr.models.kv.model.Field()
+    combine_handler_name = mr.models.kv.model.Field(is_required=False)
     reduce_handler_name = mr.models.kv.model.Field(is_required=False)
 
     def presave(self):

@@ -4,10 +4,12 @@ Just return a scalar
 **
 argument_spec:
     -
-        name: arg1
-        type: int
+        name: arguments
+        type: list
 
 handler_type: mapper
 """
 
-return { 'datum': arg1 }
+arguments = dict(arguments)
+
+return [('datum', sum(arguments['arg1']))]

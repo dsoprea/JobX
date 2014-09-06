@@ -27,8 +27,10 @@ def _get_arguments_from_request():
     if request_data is None:
         raise ValueError("No arguments given (1)")
 
+    assert issubclass(request_data['arguments'].__class__, dict) is True
+
     try:
-        return request_data['arguments']
+        return request_data['arguments'].items()
     except KeyError:
         raise ValueError("No arguments given (2)")
 
@@ -50,14 +52,18 @@ def job_submit(workflow_name, job_name):
     handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
 
     try:
-        raw_arguments = _get_arguments_from_request()
-        
+        arguments = _get_arguments_from_request()
+
         # Make sure that we don't get a generator. We render generators on 
         # principle, but they don't work so well with persistence.
+
 # TODO(dustin): Created a serializable generator container for the arguments.
-        arguments = dict(handler.cast_arguments(raw_arguments))
+
+#        arguments = list(handler.cast_arguments(raw_arguments))
     except mr.models.kv.handler.ArgumentMarshalError as e:
         return (str(e), 406)
+
+    print("Received arguments: %s" % (arguments,))
 
     context = {
         'requester_ip': flask.request.remote_addr
@@ -67,10 +73,22 @@ def job_submit(workflow_name, job_name):
                     invocation_id=None,
                     workflow_name=workflow_name,
                     step_name=step.step_name,
-                    arguments=dict(arguments),
+#                    arguments=arguments,
                     direction=mr.constants.D_MAP)
 
     invocation.save()
+
+    dq = mr.models.kv.queues.dataset.DatasetQueue(
+            workflow, 
+            invocation,
+            mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+    for (k, v) in arguments:
+        data = {
+            'p': (k, v),
+        }
+
+        dq.add(data)
 
     it = mr.models.kv.trees.invocations.InvocationsTree(
             workflow, 
@@ -95,8 +113,8 @@ def job_submit(workflow_name, job_name):
                             request=request,
                             job=job, 
                             step=step,
-                            handler=handler,
-                            arguments=arguments)
+                            handler=handler)#,
+                            #arguments=arguments)
 
     rr = mr.job_engine.get_request_receiver()
     result = rr.process_request(message_parameters)

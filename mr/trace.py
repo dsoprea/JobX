@@ -3,7 +3,7 @@ import Queue
 import mr.models.kv.request
 import mr.models.kv.workflow
 import mr.models.kv.trees.invocations
-import mr.models.kv.trees.mapped_steps
+import mr.models.kv.queues.dataset
 import mr.constants
 
 def invocation_graph_gen(workflow, request):
@@ -30,18 +30,44 @@ def invocation_graph_gen(workflow, request):
                 workflow, 
                 parent_invocation)
 
-        results = mr.models.kv.trees.mapped_steps.MappedStepsTree(
-                    workflow, 
-                    parent_invocation)
-
         for child_invocation in it.list_entities():
-            if results is not None:
-                try:
-                    meta = results.get_child_meta(
-                                child_invocation.invocation_id)
-                except KeyError:
-                    # Was not a mapping.
-                    meta = None
+            # Read arguments.
 
-            yield (parent_invocation, child_invocation, meta)
+            dqa = mr.models.kv.queues.dataset.DatasetQueue(
+                    workflow, 
+                    child_invocation,
+                    mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+            try:
+                argument_data = list(dqa.list_data())
+            except KeyError:
+                argument_data = None
+
+            # Read post-combine data.
+
+            dqc = mr.models.kv.queues.dataset.DatasetQueue(
+                    workflow, 
+                    child_invocation,
+                    mr.models.kv.queues.dataset.DT_POST_COMBINE)
+
+            try:
+                post_combine_data = list(dqc.list_data())
+            except KeyError:
+                post_combine_data = None
+
+            # Read post-reduce data.
+
+            dqr = mr.models.kv.queues.dataset.DatasetQueue(
+                    workflow, 
+                    child_invocation,
+                    mr.models.kv.queues.dataset.DT_POST_REDUCE)
+
+            try:
+                post_reduce_data = list(dqr.list_data())
+            except KeyError:
+                post_reduce_data = None
+
+            yield (child_invocation, argument_data, post_combine_data, 
+                   post_reduce_data, parent_invocation)
+
             q.put(child_invocation)

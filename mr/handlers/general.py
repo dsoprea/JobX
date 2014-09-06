@@ -7,6 +7,7 @@ import collections
 import mr.models.kv.handler
 import mr.models.kv.workflow
 import mr.handlers.utility
+import mr.handlers.scope
 
 _logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ HANDLER_DEFINITION_CLS = collections.namedtuple(
                              'argument_spec',
                              'source_type',
                              'cast_arguments'])
+
 
 
 class HandlerFormatException(Exception):
@@ -107,6 +109,9 @@ class Handlers(object):
         self.__compile_handlers()
 
     def __compile_handlers(self):
+        scope = {}
+        scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
+
         handler_count = 0
         for name, arg_names, version in self.__library.list_handlers():
             handler_count += 1
@@ -122,7 +127,8 @@ class Handlers(object):
             (meta, compiled) = processor.compile(
                                 name, 
                                 arg_names, 
-                                hd.source_code)
+                                hd.source_code, 
+                                scope=scope)
         
             self.__compiled[name] = compiled
 

@@ -7,6 +7,6 @@ bind = 'unix:/tmp/mr.gunicorn.sock'
 timeout = 120
 
 errorlog = '-'
-loglevel = 'debug'
+loglevel = 'warning'
 
 worker_class = 'gevent'
