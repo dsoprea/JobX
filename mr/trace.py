@@ -1,10 +1,51 @@
 import Queue
+import pprint
 
 import mr.models.kv.request
 import mr.models.kv.workflow
 import mr.models.kv.trees.invocations
 import mr.models.kv.queues.dataset
 import mr.constants
+
+def _get_child_info(workflow, child_invocation, parent_invocation=None):
+    # Read arguments.
+
+    dqa = mr.models.kv.queues.dataset.DatasetQueue(
+            workflow, 
+            child_invocation,
+            mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+    try:
+        argument_data = list(dqa.list_data())
+    except KeyError:
+        argument_data = None
+
+    # Read post-combine data.
+
+    dqc = mr.models.kv.queues.dataset.DatasetQueue(
+            workflow, 
+            child_invocation,
+            mr.models.kv.queues.dataset.DT_POST_COMBINE)
+
+    try:
+        post_combine_data = list(dqc.list_data())
+    except KeyError:
+        post_combine_data = None
+
+    # Read post-reduce data.
+
+    dqr = mr.models.kv.queues.dataset.DatasetQueue(
+            workflow, 
+            child_invocation,
+            mr.models.kv.queues.dataset.DT_POST_REDUCE)
+
+    try:
+        post_reduce_data = list(dqr.list_data())
+    except KeyError:
+        post_reduce_data = None
+
+    return (child_invocation, argument_data, post_combine_data, 
+            post_reduce_data, parent_invocation)
 
 def invocation_graph_gen(workflow, request):
     """Return a generator that presents every a (parent, child) tuple of 
@@ -16,8 +57,16 @@ def invocation_graph_gen(workflow, request):
                 workflow, 
                 invocation_id)
 
-    q = Queue.Queue()
     root_invocation = get_invocation(request.invocation_id)
+
+    child_info = _get_child_info(
+                    workflow, 
+                    root_invocation, 
+                    parent_invocation=None)
+
+    yield child_info
+
+    q = Queue.Queue()
     q.put(root_invocation)
 
     while 1:
@@ -30,44 +79,14 @@ def invocation_graph_gen(workflow, request):
                 workflow, 
                 parent_invocation)
 
-        for child_invocation in it.list_entities():
-            # Read arguments.
+        entities = list(it.list_entities())
 
-            dqa = mr.models.kv.queues.dataset.DatasetQueue(
-                    workflow, 
-                    child_invocation,
-                    mr.models.kv.queues.dataset.DT_ARGUMENTS)
+        for child_invocation in entities:
+            child_info = _get_child_info(
+                            workflow, 
+                            child_invocation, 
+                            parent_invocation)
 
-            try:
-                argument_data = list(dqa.list_data())
-            except KeyError:
-                argument_data = None
-
-            # Read post-combine data.
-
-            dqc = mr.models.kv.queues.dataset.DatasetQueue(
-                    workflow, 
-                    child_invocation,
-                    mr.models.kv.queues.dataset.DT_POST_COMBINE)
-
-            try:
-                post_combine_data = list(dqc.list_data())
-            except KeyError:
-                post_combine_data = None
-
-            # Read post-reduce data.
-
-            dqr = mr.models.kv.queues.dataset.DatasetQueue(
-                    workflow, 
-                    child_invocation,
-                    mr.models.kv.queues.dataset.DT_POST_REDUCE)
-
-            try:
-                post_reduce_data = list(dqr.list_data())
-            except KeyError:
-                post_reduce_data = None
-
-            yield (child_invocation, argument_data, post_combine_data, 
-                   post_reduce_data, parent_invocation)
+            yield child_info
 
             q.put(child_invocation)
