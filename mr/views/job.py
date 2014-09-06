@@ -51,19 +51,7 @@ def job_submit(workflow_name, job_name):
     step = mr.models.kv.step.get(workflow, job.initial_step_name)
     handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
 
-    try:
-        arguments = _get_arguments_from_request()
-
-        # Make sure that we don't get a generator. We render generators on 
-        # principle, but they don't work so well with persistence.
-
-# TODO(dustin): Created a serializable generator container for the arguments.
-
-#        arguments = list(handler.cast_arguments(raw_arguments))
-    except mr.models.kv.handler.ArgumentMarshalError as e:
-        return (str(e), 406)
-
-    print("Received arguments: %s" % (arguments,))
+    arguments = _get_arguments_from_request()
 
     context = {
         'requester_ip': flask.request.remote_addr
@@ -73,7 +61,6 @@ def job_submit(workflow_name, job_name):
                     invocation_id=None,
                     workflow_name=workflow_name,
                     step_name=step.step_name,
-#                    arguments=arguments,
                     direction=mr.constants.D_MAP)
 
     invocation.save()
@@ -113,8 +100,7 @@ def job_submit(workflow_name, job_name):
                             request=request,
                             job=job, 
                             step=step,
-                            handler=handler)#,
-                            #arguments=arguments)
+                            handler=handler)
 
     rr = mr.job_engine.get_request_receiver()
     result = rr.process_request(message_parameters)

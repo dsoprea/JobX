@@ -110,17 +110,14 @@ class _QueuePusher(object):
         parent_tree.add_entity(reduce_invocation)
 
         # Queue the reduction.
-# TODO(dustin): We would prefer to derive the message-parameters *from* the 
-#               invocation, but that would require several lookups when we 
-#               already have the data right here.
+
         reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
             workflow=workflow,
             invocation=reduce_invocation,
             request=message_parameters.request,
             job=message_parameters.job,
             step=reduce_step,
-            handler=reduce_step.reduce_handler_name)#,
-            #arguments=None)
+            handler=reduce_step.reduce_handler_name)
 
         assert reduce_parameters.handler is not None
 
@@ -148,12 +145,15 @@ def _get_pusher():
 
     return _pusher
 
+
 class _StepProcessor(object):
     """Receives queued items to be processed. We are running in our own gthread 
     by the time we're called.
     """
 
     def __queue_map_step(self, next_step, kv_tuple, original_parameters):
+        assert invocation.invocation_id is not None
+
         request = original_parameters.request
         workflow = original_parameters.workflow
         job = original_parameters.job
@@ -170,11 +170,7 @@ class _StepProcessor(object):
                                 workflow_name=workflow.workflow_name,
                                 parent_invocation_id=invocation.invocation_id,
                                 step_name=next_step.step_name,
-#                                arguments=next_arguments,
                                 direction=mr.constants.D_MAP)
-
-# TODO(dustin): Debugging.
-        assert map_invocation.parent_invocation_id is not None
 
         map_invocation.save()
 
@@ -215,8 +211,7 @@ class _StepProcessor(object):
             request=request,
             job=job,
             step=next_step,
-            handler=next_handler)#,
-#            arguments=next_arguments)
+            handler=next_handler)
 
         pusher = _get_pusher()
         pusher.queue_map_step_from_parameters(mapped_parameters)
@@ -304,8 +299,6 @@ class _StepProcessor(object):
 
         i = 0
         for (k, v) in mapped_steps_gen:
-# TODO(dustin): We'll have to update the reducer to take a key and list of values.
-
             _logger.debug("Queueing mapping (%d) from invocation [%s].",
                           i, invocation.invocation_id)
 
@@ -406,40 +399,6 @@ class _StepProcessor(object):
             message_parameters, 
             invocation)
 
-
-
-
-
-#        if invocation.parent_invocation_id is not None:
-#            _logger.debug("Decrementing mapped_waiting counter on the parent "
-#                          "[%s] of the map-step [%s] that rendered a result.",
-#                          invocation.parent_invocation_id, 
-#                          invocation.invocation_id)
-#
-#            parent_invocation = self.__decrement_parent_invocation(
-#                                    workflow,
-#                                    invocation)
-#
-#            if parent_invocation.mapped_waiting == 0:
-#                pusher = _get_pusher()
-#
-#                # Do a reduction with this invocation as the parent (it will access our 
-#                # results).
-#                pusher.queue_reduce_step_from_parameters(
-#                    message_parameters, 
-#                    invocation)
-#        else:
-#            # We've reduced our way back up to the original request.
-#
-#            request = message_parameters.request
-#
-#            _logger.debug("No further parents for mapped-step [%s]. Marking "
-#                          "request as complete: [%s]", 
-#                          invocation.invocation_id, request.request_id)
-#
-#            request.done = True
-#            request.save()
-
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
 
@@ -491,7 +450,7 @@ class _StepProcessor(object):
             if issubclass(
                    path_type.__class__, 
                    mr.handlers.scope.MrConfigureToMap) is True:
-# TODO(dustin): This still needs to be checked for proper connectivity between other mappers, the combiner, and the reducer.
+
                 self.__map_to_downstream(
                     path_type.next_step_name,
                     step.map_handler_name, 
@@ -502,6 +461,7 @@ class _StepProcessor(object):
             elif issubclass(
                     path_type.__class__, 
                     mr.handlers.scope.MrConfigureToReturn) is True:
+
                 self.__map_collect_result(
                     step.map_handler_name,
                     handler_result_gen,
@@ -509,7 +469,8 @@ class _StepProcessor(object):
                     invocation,
                     message_parameters)
         except:
-# TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
+# TODO(dustin): Mark the request as failed, and have whatever is blocking on a 
+#               result track down the error message/traceback.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
             invocation.save()
@@ -678,12 +639,11 @@ class _StepProcessor(object):
                 _logger.debug("No further parents. Marking request as "
                               "complete: [%s]", request.request_id)
 
-# TODO(dustin): We're not currently storing the result.
-
                 request.done = True
                 request.save()
         except:
-# TODO(dustin): Whatever is checking for a result needs to be notified about a breakdown.
+# TODO(dustin): Mark the request as failed, and have whatever is blocking on a 
+#               result track down the error message/traceback.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
             invocation.save()

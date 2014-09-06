@@ -2,7 +2,6 @@
 
 import requests
 import json
-import pprint
 
 headers = {
     'Content-Type': 'application/json',
@@ -22,4 +21,10 @@ r.raise_for_status()
 raw = r.json()
 result = dict(raw['result'])
 
-pprint.pprint(result)
+formatted = json.dumps(
+                result, 
+                sort_keys=True, 
+                indent=4, 
+                separators=(',', ': '))
+
+print(formatted)
