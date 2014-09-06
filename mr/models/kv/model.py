@@ -2,6 +2,7 @@ import logging
 import json
 import random
 import hashlib
+import collections
 
 import etcd.exceptions
 
@@ -137,6 +138,27 @@ class Model(mr.models.kv.common.CommonKv):
 
         return ('<%s [%s] %s>' % 
                 (cls.__name__, getattr(self, cls.key_field), truncated_data))
+
+    def get_debug(self, ignore_keys=()):
+        cls = self.__class__
+
+        data = dict([(k, v) 
+                     for k, v 
+                     in self.get_data().items() 
+                     if k != cls.key_field and \
+                        k not in ignore_keys])
+
+        info = collections.OrderedDict()
+        info['entity_name'] = cls.__name__
+        info['primary_key'] = collections.OrderedDict()
+
+        info['primary_key'][cls.key_field] = getattr(self, cls.key_field)
+        info['data'] = data
+
+        return json.dumps(
+                info, 
+                indent=4, 
+                separators=(',', ': '))
 
     def __get_required_field_names(self):
         cls = self.__class__

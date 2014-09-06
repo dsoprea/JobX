@@ -1,3 +1,6 @@
+"""Process messages off the queue, including mapping, combining, and reducing.
+"""
+
 import sys
 import logging
 import functools
