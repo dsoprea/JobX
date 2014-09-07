@@ -13,4 +13,4 @@ argument_spec:
 handler_type: mapper
 """
 
-return arg1 + arg2
+yield ('', arg1 + arg2)

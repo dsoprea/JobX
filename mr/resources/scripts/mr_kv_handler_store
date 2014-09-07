@@ -52,8 +52,15 @@ args = parser.parse_args()
 #source_code = sys.stdin.read().strip()
 
 def _scan_files(path, workflow_name, simulate_only=False):
+    print("Scanning files (and adding/updating handlers):")
+    print('')
+
     handlers_s = set()
     for filename in os.listdir(args.path):
+        if filename[0] == '_':
+            print("[%s]: Ignoring." % (filename,))
+            continue
+
         pivot = filename.rfind('.')
         extension = filename[pivot + 1:].lower()
         name = filename[:pivot]
@@ -61,8 +68,9 @@ def _scan_files(path, workflow_name, simulate_only=False):
         try:
             source_type = mr.config.handler.CODE_EXTENSION_MAP[extension]
         except KeyError:
-            _logger.warning("File does not look it's a source-file [that we "
-                            "can process]: [%s] [%s]", filename, extension)
+            print("[%s]: File does not look it's a source-file [that we can "
+                  "process]: [%s]" % (filename, extension))
+
             continue
 
         filepath = os.path.join(args.path, filename)
@@ -76,44 +84,62 @@ def _scan_files(path, workflow_name, simulate_only=False):
 
         handlers_s.add(name)
 
-    # Tabulate the handlers being used by steps.
+    if handlers_s:
+        print('')
 
-    used_handlers = {}
-    for step in mr.models.kv.step.Step.list(workflow_name):
-        try:
-            used_handlers[step.map_handler_name] = [step.step_name]
-        except KeyError:
-            used_handlers[step.map_handler_name].append(step.step_name)
+    handlers_to_delete = [handler 
+                          for handler 
+                          in mr.models.kv.handler.Handler.list(workflow_name)
+                          if handler.handler_name not in handlers_s]
 
-        if step.reduce_handler_name is not None:
+    if handlers_to_delete:
+        # Tabulate the handlers being used by steps.
+
+        print("Identifying handlers currently being used.")
+
+        used_handlers = {}
+        for step in mr.models.kv.step.Step.list(workflow_name):
             try:
-                used_handlers[step.reduce_handler_name] = [step.step_name]
+                used_handlers[step.map_handler_name] = [step.step_name]
             except KeyError:
-                used_handlers[step.reduce_handler_name].append(step.step_name)
+                used_handlers[step.map_handler_name].append(step.step_name)
 
-        if step.combine_handler_name is not None:
-            try:
-                used_handlers[step.combine_handler_name] = [step.step_name]
-            except KeyError:
-                used_handlers[step.combine_handler_name].append(step.step_name)
+            if step.reduce_handler_name is not None:
+                try:
+                    used_handlers[step.reduce_handler_name] = [step.step_name]
+                except KeyError:
+                    used_handlers[step.reduce_handler_name].append(step.step_name)
 
-    # Remove handlers that we didn't find source-code for.
+            if step.combine_handler_name is not None:
+                try:
+                    used_handlers[step.combine_handler_name] = [step.step_name]
+                except KeyError:
+                    used_handlers[step.combine_handler_name].append(step.step_name)
 
-    for handler in mr.models.kv.handler.Handler.list(workflow_name):
-        if handler.handler_name in handlers_s:
-            continue
+        # Remove handlers that we didn't find source-code for.
 
-        print("Handler [%s]: Removing." % (handler.handler_name,))
+        print("Removing handlers that no longer have source-code files:")
+        print('')
 
-        # Verify that no steps implement this handler.
+        for handler in handlers_to_delete:
+            # Verify that no steps implement this handler.
 
-        if handler.handler_name in used_handlers:
-            print("Handler [%s]: Did not have source-code file, but is used by"
-                  "\n\t%s" % 
-                  (handler.handler_name, used_handlers[handler.handler_name]))
-        elif simulate_only is False:
-            # Nothing uses it. Delete it.
-            handler.delete()
+            if handler.handler_name in used_handlers:
+                # *Prints a list of referencing steps.
+                print("[%s]: Did not have source-code file, but we can't "
+                      "remove it since it is used by: %s" % 
+                      (handler.handler_name, used_handlers[handler.handler_name]))
+            else:
+                print("[%s]: Removing (not referenced by anything, either)." % 
+                      (handler.handler_name,))
+
+                if simulate_only is False:
+                    # Nothing uses it. Delete it.
+                    handler.delete()
+
+        print('')
+    else:
+        print("No handlers need to be removed.")
 
 def _parse_doc_string(doc_string):
     # Normalize.
@@ -175,8 +201,9 @@ def _check_handler(filepath, name, source_type, workflow_name, simulate_only=Fal
     available_fields_s = set(meta.keys())
 
     if required_fields_s != available_fields_s:
-        raise ValueError("Handler has invalid/missing meta-fields: [%s]" % 
-                         (name,))
+        raise ValueError("[%s] Handler has invalid/missing meta-fields: "
+                         "[%s] != [%s]" % 
+                         (name, required_fields_s, available_fields_s))
 
     version = hashlib.sha1(doc_string + source_code).hexdigest()
     workflow = mr.models.kv.workflow.get(workflow_name)
@@ -204,11 +231,11 @@ def _check_handler(filepath, name, source_type, workflow_name, simulate_only=Fal
                 version, 
                 simulate_only=simulate_only)
         else:
-            print("Handler [%s]: Not changed." % (name,))
+            print("[%s]: Not changed." % (name,))
 
 def _create_handler(workflow, name, meta, description, source_type, 
                     source_code, version, simulate_only=False):
-    print("Handler [%s]: Creating." % (name,))
+    print("[%s]: Creating." % (name,))
 
 # TODO(dustin): Compile the code so as to test it.
 # TODO(dustin): We might also want to require "test" arguments and a test 
@@ -229,7 +256,7 @@ def _create_handler(workflow, name, meta, description, source_type,
 
 def _update_handler(handler, meta, description, source_type, source_code, 
                     version, simulate_only=False):
-    print("Handler [%s]: Updating." % (handler.handler_name,))
+    print("[%s]: Updating." % (handler.handler_name,))
 
 # TODO(dustin): Compile the code so as to test it.
 # TODO(dustin): We might also want to require "test" arguments and a test 
