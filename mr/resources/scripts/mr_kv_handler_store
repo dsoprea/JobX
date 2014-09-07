@@ -10,6 +10,7 @@ import argparse
 import json
 import yaml
 import hashlib
+import os
 
 import mr.config.log
 import mr.config.handler
@@ -27,62 +28,70 @@ description = "Create a step entity"
 
 parser = argparse.ArgumentParser(description=description)
 
-parser.add_argument('workflow_name', help='Workflow name')
-parser.add_argument('path', help="Path of source-code and meta-files")
-parser.add_argument('-s', '--simulate_only', action='store_true', help="Just simulate")
+parser.add_argument(
+    'workflow_name', 
+    help='Workflow name')
 
-#parser.add_argument('name', help='Name')
-#parser.add_argument('description', help='Description')
-#parser.add_argument('source_type', help='Source language')
-#parser.add_argument('handler_type', help='Handler type')
-#
-#parser.add_argument('-a', '--argument', 
-#                    required=True, 
-#                    action='append', 
-#                    nargs=2, 
-#                    help='Argument name and type (must be valid)')
-#
+parser.add_argument(
+    'path', 
+    help="Path of source-code and meta-files")
+
+parser.add_argument(
+    '-s', '--simulate_only', 
+    action='store_true', 
+    help="Just simulate")
+
 args = parser.parse_args()
-#
-#stdin_waiting = select.select([sys.stdin], [], [], 0)[0]
-#if not stdin_waiting:
-#    print("Please provide code via STDIN.")
-#    sys.exit(1)
-#
-#source_code = sys.stdin.read().strip()
+
+def _get_recursive_file_gen(root_path):
+    for (path, dir_entries, file_entries) in os.walk(root_path):
+        rel_path = path[len(root_path) + 1:]
+
+        if rel_path != '':
+            prefix = rel_path.replace('/', '_') + '_'
+        else:
+            prefix = ''
+
+        for filename in file_entries:
+            if filename[0] == '_':
+                print("[%s]: Ignoring." % (filename,))
+                continue
+
+            filepath = os.path.join(path, filename)
+            
+            pivot = filename.rfind('.')
+            if pivot == -1:
+                continue
+
+            handler_name = prefix + filename[:pivot]
+            extension = filename[pivot + 1:]
+
+            rel_filepath = os.path.join(rel_path, filename)
+            yield (filepath, rel_filepath, extension, handler_name)
 
 def _scan_files(path, workflow_name, simulate_only=False):
     print("Scanning files (and adding/updating handlers):")
     print('')
 
     handlers_s = set()
-    for filename in os.listdir(args.path):
-        if filename[0] == '_':
-            print("[%s]: Ignoring." % (filename,))
-            continue
+    for (filepath, rel_filepath, extension, handler_name) \
+        in _get_recursive_file_gen(path):
+            try:
+                source_type = mr.config.handler.CODE_EXTENSION_MAP[extension]
+            except KeyError:
+                print("[%s]: File does not look it's a source-file [that we "
+                      "can process]: [%s]" % (rel_filepath, extension))
 
-        pivot = filename.rfind('.')
-        extension = filename[pivot + 1:].lower()
-        name = filename[:pivot]
+                continue
 
-        try:
-            source_type = mr.config.handler.CODE_EXTENSION_MAP[extension]
-        except KeyError:
-            print("[%s]: File does not look it's a source-file [that we can "
-                  "process]: [%s]" % (filename, extension))
+            _check_handler(
+                filepath, 
+                handler_name, 
+                source_type, 
+                workflow_name, 
+                simulate_only=simulate_only)
 
-            continue
-
-        filepath = os.path.join(args.path, filename)
-
-        _check_handler(
-            filepath, 
-            name, 
-            source_type, 
-            workflow_name, 
-            simulate_only=simulate_only)
-
-        handlers_s.add(name)
+            handlers_s.add(handler_name)
 
     if handlers_s:
         print('')
@@ -276,4 +285,6 @@ if args.simulate_only is True:
     print("SIMULATION ONLY!")
     print('')
 
-_scan_files(args.path, args.workflow_name, simulate_only=args.simulate_only)
+root_path = args.path.rstrip('/')
+
+_scan_files(root_path, args.workflow_name, simulate_only=args.simulate_only)
