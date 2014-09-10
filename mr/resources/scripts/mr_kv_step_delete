@@ -22,5 +22,6 @@ parser.add_argument('step_name', help='Step name')
 args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
-step = mr.models.kv.step.get(workflow, args.step_name)
-step.delete()
+
+identity = (workflow.workflow_name, args.step_name)
+mr.models.kv.step.Step.delete_entity(identity)

@@ -27,4 +27,4 @@ w = mr.models.kv.workflow.Workflow(
 
 w.save()
 
-pprint.pprint(w)
+print(w.get_debug())

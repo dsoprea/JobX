@@ -9,6 +9,7 @@ import argparse
 
 import mr.config.log
 import mr.models.kv.invocation
+import mr.models.kv.step
 import mr.models.kv.queues.dataset
 
 description = "Print the invocation-graph for a request"
@@ -25,6 +26,16 @@ invocation_id = args.invocation_id
 
 while invocation_id is not None:
     invocation = mr.models.kv.invocation.get(workflow, invocation_id)
+    step = mr.models.kv.step.get(workflow, invocation.step_name)
+
+    if invocation.direction == mr.constants.D_MAP:
+        handler_phrase = ('[%s]->[%s]' % 
+                          (step.map_handler_name, step.combine_handler_name))
+    elif invocation.direction == mr.constants.D_REDUCE:
+        handler_phrase = ('[%s]' % (step.reduce_handler_name))
+    else:
+        raise ValueError("Invocation direction [%s] is not valid." % 
+                         (invocation.direction,))
 
     dqa = mr.models.kv.queues.dataset.DatasetQueue(
         workflow, 
@@ -50,10 +61,10 @@ while invocation_id is not None:
     else:
         has_results = False
 
-    direction_phrase = '[%s]' % invocation.direction
+    direction_aligned = '[%s]' % invocation.direction
 
-    print("Invocation: [%s] %8s HAS_ARGS=[%s] HAS_RESULTS=[%s] PARENT=[%s]" % 
-          (invocation.invocation_id, direction_phrase, 
+    print("Invocation: [%s] %8s %50s A=[%s] R=[%s] P=[%s]" % 
+          (invocation.invocation_id, direction_aligned, handler_phrase,
            has_arguments, has_results, invocation.parent_invocation_id))
 
     invocation_id = invocation.parent_invocation_id

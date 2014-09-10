@@ -47,4 +47,4 @@ r = mr.models.kv.request.Request(
 
 r.save()
 
-pprint.pprint(r)
+print(r.get_debug())

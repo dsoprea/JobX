@@ -25,4 +25,4 @@ args = parser.parse_args()
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 request = mr.models.kv.request.get(workflow, args.request_id)
 
-pprint.pprint(request)
+print(request.get_debug())

@@ -35,4 +35,4 @@ job = mr.models.kv.job.Job(
 
 job.save()
 
-pprint.pprint(job)
+print(job.get_debug())

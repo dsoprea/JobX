@@ -24,4 +24,4 @@ args = parser.parse_args()
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 job = mr.models.kv.job.get(workflow, args.job_name)
 
-pprint.pprint(job)
+print(job.get_debug())

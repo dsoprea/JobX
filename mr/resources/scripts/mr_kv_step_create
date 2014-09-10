@@ -22,38 +22,49 @@ parser.add_argument('workflow_name', help='Workflow name')
 parser.add_argument('name', help='Name')
 parser.add_argument('description', help='Description')
 parser.add_argument('map_handler_name', help='Handler that receives arguments and does maps')
-parser.add_argument('reduce_handler_name', help='Handler that receives and reduces one or more results to a single result')
+parser.add_argument('combine_handler_name', help='Handler that groups similar or duplicate map output')
+parser.add_argument('reduce_handler_name', help='Handler that receives and reduces a set of results for one or more post-combined map steps')
 
 args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 
-# TODO(dustin): We might want to check these against the actual library (but 
-#               maybe not). Give it some thought.
+map_handler_name = args.map_handler_name
+combine_handler_name = args.combine_handler_name
+reduce_handler_name = args.reduce_handler_name
+
 try:
-    handler_map = mr.models.kv.handler.get(workflow, args.map_handler_name)
+    mr.models.kv.handler.get(workflow, map_handler_name)
 except KeyError:
-    print("Map handler is invalid: [%s]" % (args.map_handler_name,))
+    print("Map handler is invalid: [%s]" % (map_handler_name,))
     sys.exit(1)
 
-if args.reduce_handler_name != '':
-    try:
-        handler_reduce = mr.models.kv.handler.get(workflow, args.reduce_handler_name)
-    except KeyError:
-        print("Reduce handler is invalid: [%s]" % (args.reduce_handler_name,))
-        sys.exit(2)
+# We want the user to explicitly indicate that they don't want a combiner, 
+# which is why it's not just an optional argument.
 
-    reduce_handler_name = handler_reduce.handler_name
+if combine_handler_name != '':
+    try:
+        mr.models.kv.handler.get(workflow, combine_handler_name)
+    except KeyError:
+        print("Combine handler is invalid: [%s]" % (combine_handler_name,))
+        sys.exit(2)
 else:
-    reduce_handler_name = None
+    combine_handler_name = None
+
+try:
+    mr.models.kv.handler.get(workflow, reduce_handler_name)
+except KeyError:
+    print("Reduce handler is invalid: [%s]" % (reduce_handler_name,))
+    sys.exit(3)
 
 s = mr.models.kv.step.Step(
         workflow_name=args.workflow_name, 
         step_name=args.name, 
         description=args.description, 
-        map_handler_name=handler_map.handler_name,
+        map_handler_name=map_handler_name,
+        combine_handler_name=combine_handler_name,
         reduce_handler_name=reduce_handler_name)
 
 s.save()
 
-pprint.pprint(s)
+print(s.get_debug())

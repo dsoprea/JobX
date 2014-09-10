@@ -79,51 +79,62 @@ class Model(mr.models.kv.common.CommonKv):
         _logger.debug("Loading data on model [%s]. IS_STORED=[%s]", 
                       cls.__name__, is_stored)
 
-        # If the key wasn't non-None, assign it randomly.
-        #
-        # Previously, we allowed this column to be optional, but we'd get 
-        # spurious keys without realizing it.
-        if data[cls.key_field] is None:
-            key = cls.make_opaque()
-            _logger.debug("Model [%s] was not loaded with a key. Generating "
-                          "key: [%s]", cls.entity_class, key)
+        try:
+            # If the key wasn't non-None, assign it randomly.
+            #
+            # Previously, we allowed this column to be optional, but we'd get 
+            # spurious keys without realizing it.
+            if data[cls.key_field] is None:
+                key = cls.make_opaque()
+                _logger.debug("Model [%s] was not loaded with a key. Generating "
+                              "key: [%s]", cls.entity_class, key)
 
-            data[cls.key_field] = key
+                data[cls.key_field] = key
 
-        # Make sure we received all of the fields.
+            # Make sure we received all of the fields.
 
-        all_fields = set(self.__get_field_names())
-        actual_fields = set(data.keys())
+            all_fields = set(self.__get_field_names())
+            actual_fields = set(data.keys())
 
-        # Make sure that only valid fields were given.
+            # Make sure that only valid fields were given.
 
-        invalid_fields = actual_fields - all_fields
-        if invalid_fields:
-            raise ValueError("Invalid fields were given: %s" % (invalid_fields,))
+            invalid_fields = actual_fields - all_fields
+            if invalid_fields:
+                raise ValueError("Invalid fields were given: %s" % (invalid_fields,))
 
-        # Fill-in any missing fields.
+            # Fill-in any missing fields.
 
-        for field_name in (all_fields - actual_fields):
-            data[field_name] = getattr(cls, field_name).default_value
+            for field_name in (all_fields - actual_fields):
+                data[field_name] = getattr(cls, field_name).default_value
 
-        # Determine which fields had empty data.
+            # Determine which fields had empty data.
 
-        data_info = [(field_name, 
-                      getattr(cls, field_name), 
-                      data[field_name]) 
-                     for field_name 
-                     in all_fields]
+            data_info = [(field_name, 
+                          getattr(cls, field_name), 
+                          data[field_name]) 
+                         for field_name 
+                         in all_fields]
 
-        for name, field_obj, datum in data_info:
-            if field_obj.is_empty(datum) is False:
-                field_obj.validate(name, datum)
-            elif field_obj.is_required:
-                raise ValidationError(name, "Required field is empty/omitted")
+            for name, field_obj, datum in data_info:
+                if field_obj.is_empty(datum) is False:
+                    field_obj.validate(name, datum)
+                elif field_obj.is_required:
+                    raise ValidationError(name, "Required field is empty/omitted")
 
-            setattr(self, name, datum)
+                setattr(self, name, datum)
 
-        # Reflects whether or not the data came from storage.
-        self.__is_stored = is_stored
+            # Reflects whether or not the data came from storage.
+            self.__is_stored = is_stored
+        except:
+            try:
+                pk_value = data[cls.key_field]
+            except KeyError:
+                pk_value = None
+
+            _logger.exception("There was an error while loading data for "
+                              "model [%s]. PK=[%s]", cls.__name__, pk_value)
+
+            raise
 
     def __repr__(self):
         cls = self.__class__
@@ -261,7 +272,7 @@ class Model(mr.models.kv.common.CommonKv):
 
         identity = self.get_identity()
 
-        cls.__delete_entity(identity)
+        cls.delete_entity(identity)
         self.__is_stored = False
 
     def refresh(self):
@@ -356,8 +367,7 @@ class Model(mr.models.kv.common.CommonKv):
                          (cls.entity_class, parent, identity))
 
     @classmethod
-    def __delete_entity(cls, identity):
-#        identity = cls.flatten_identity(identity)
+    def delete_entity(cls, identity):
         parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Deleting [%s] entity with parent [%s]: [%s]", 

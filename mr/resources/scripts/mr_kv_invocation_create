@@ -43,4 +43,4 @@ i = mr.models.kv.invocation.Invocation(
 
 i.save()
 
-pprint.pprint(i)
+print(i.get_debug())

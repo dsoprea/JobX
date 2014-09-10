@@ -1,0 +1,72 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+import select
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.step
+import mr.models.kv.handler
+
+description = "Update handlers on a step entity"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('name', help='Name')
+parser.add_argument('-m', '--map-handler-name', help='Handler that receives arguments and does maps')
+parser.add_argument('-c', '--combine-handler-name', help='Handler that groups similar or duplicate map output')
+parser.add_argument('-r', '--reduce-handler-name', help='Handler that receives and reduces a set of results for one or more post-combined map steps')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+s = mr.models.kv.step.get(workflow, args.name)
+
+map_handler_name = args.map_handler_name
+combine_handler_name = args.combine_handler_name
+reduce_handler_name = args.reduce_handler_name
+
+dirty = False
+
+if map_handler_name is not None:
+    try:
+        mr.models.kv.handler.get(workflow, map_handler_name)
+    except KeyError:
+        print("Map handler is invalid: [%s]" % (map_handler_name,))
+        sys.exit(1)
+
+    s.map_handler_name = map_handler_name
+    dirty = True
+
+if combine_handler_name is not None:
+    try:
+        mr.models.kv.handler.get(workflow, combine_handler_name)
+    except KeyError:
+        print("Combine handler is invalid: [%s]" % (combine_handler_name,))
+        sys.exit(2)
+
+    s.combine_handler_name = combine_handler_name
+    dirty = True
+
+if reduce_handler_name is not None:
+    try:
+        mr.models.kv.handler.get(workflow, reduce_handler_name)
+    except KeyError:
+        print("Reduce handler is invalid: [%s]" % (reduce_handler_name,))
+        sys.exit(3)
+
+    s.reduce_handler_name = reduce_handler_name
+    dirty = True
+
+if dirty is True:
+    s.save()
+    print(s.get_debug())
+else:
+    print("No handler updates requested.")

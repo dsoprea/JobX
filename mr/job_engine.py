@@ -69,6 +69,7 @@ class _QueuePusher(object):
 
     def queue_reduce_step_from_parameters(self, message_parameters, 
                                           parent_invocation):
+# TODO(dustin): This still might need to be reflowed to fit changes.
         """We're reflecting (switch directions from mapping to reduction). The 
         current step is an action step (no mappings were done). The next 
         invocation will successively take the invocation-IDs of one parent to 
@@ -155,13 +156,13 @@ class _StepProcessor(object):
     """
 
     def __queue_map_step(self, next_step, kv_tuple, original_parameters):
-        assert invocation.invocation_id is not None
-
         request = original_parameters.request
         workflow = original_parameters.workflow
         job = original_parameters.job
         step = original_parameters.step
         invocation = original_parameters.invocation
+
+        assert invocation.invocation_id is not None
 
         next_handler = mr.models.kv.handler.get(
                         workflow, 
@@ -419,7 +420,9 @@ class _StepProcessor(object):
                     workflow, 
                     invocation, 
                     mr.models.kv.queues.dataset.DT_ARGUMENTS)
-
+# TODO(dustin): Arguments should be pairs of keys and value-lists from the very 
+#               moment the request is received, since downstream mappings 
+#               receive them that way.
             # Enumerate the 'p' member of every record.
             arguments = (d['p'] for d in dq.list_data())
 
@@ -480,16 +483,19 @@ class _StepProcessor(object):
 
             raise
 
-    def __decrement_parent_invocation(self, workflow, invocation):
+    def __decrement_invocation(self, workflow, invocation):
         def get_cb():
-            return mr.models.kv.invocation.get(
+            obj = mr.models.kv.invocation.get(
                     workflow, 
-                    invocation.parent_invocation_id)
+                    invocation.invocation_id)
+
+            return obj
 
         def set_cb(obj):
             obj.mapped_waiting -= 1
 
-        return mr.models.kv.invocation.Invocation.atomic_update(get_cb, set_cb)
+        obj = mr.models.kv.invocation.Invocation.atomic_update(get_cb, set_cb)
+        return obj
 
     def __add_mapped_steps(self, workflow, invocation, step_count):
         def get_cb():
@@ -516,142 +522,273 @@ class _StepProcessor(object):
         """
 
         step = message_parameters.step
-        invocation = message_parameters.invocation
+        reduce_invocation = message_parameters.invocation
         workflow = message_parameters.workflow
         request = message_parameters.request
 
         assert step.reduce_handler_name is not None
 
-        # The parent of the current invocation is the invocation that had all 
-        # of the mappings to be reduced.
-
-        parent_invocation = mr.models.kv.invocation.get(
-                                workflow, 
-                                invocation.parent_invocation_id)
-
-        _logger.debug("Processing REDUCE [%s] of original invocation [%s].", 
-                      invocation.invocation_id, parent_invocation.invocation_id)
-
         try:
-            # Call the handler with a generator of all of the results to be 
-            # reduced.
+            # The parent of the current invocation is the invocation that had all 
+            # of the mappings to be reduced.
 
-            dq = mr.models.kv.queues.dataset.DatasetQueue(
-                    workflow, 
-                    parent_invocation,
-                    mr.models.kv.queues.dataset.DT_POST_COMBINE)
+            map_invocation = mr.models.kv.invocation.get(
+                                workflow, 
+                                reduce_invocation.parent_invocation_id)
 
-            results_gen = dq.list_data()
+            if map_invocation.mapped_waiting is None:
+                _logger.debug("Processing REDUCE [%s] -of- original MAP "
+                              "invocation [%s] that rendered a DATASET.",
+                              reduce_invocation.invocation_id, 
+                              map_invocation.invocation_id)
 
-            if mr.config.IS_DEBUG is True:
-                results_gen = list(results_gen)
-
-                _logger.debug("(%d) results will be reduced by step [%s] for "
-                              "original invocation [%s].",
-                              len(results_gen), step.reduce_handler_name, 
-                              parent_invocation.invocation_id)
-                
-                print('')
-                for (i, data) in enumerate(results_gen):
-                    print("Result (%d)\nKey: %s\n Value List: %s" % 
-                          (i, data['k'], data['vl']))
-
-                print('')
-
-            results_gen = ((data['k'], data['vl']) for data in results_gen)
-
-            handler_arguments = {
-                'results': results_gen,
-            }
-
-            reduce_result_gen = self.__call_handler(
-                                    workflow,
-                                    step.reduce_handler_name, 
-                                    handler_arguments)
-
-            if mr.config.IS_DEBUG is True:
-                reduce_result_gen = list(reduce_result_gen)            
-                _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
-                              step.reduce_handler_name, invocation.invocation_id, 
-                              pprint.pformat(reduce_result_gen))
-
-            # Store result
-
-            _logger.debug("Storing reduction result to parent: "
-                          "[%s] [%s]", 
-                          parent_invocation.invocation_id,
-                          parent_invocation.direction)
-
-            parent_dq = mr.models.kv.queues.dataset.DatasetQueue(
-                            workflow, 
-                            parent_invocation,
-                            mr.models.kv.queues.dataset.DT_POST_REDUCE)
-
-            for (k, v) in reduce_result_gen:
-                data = {
-                    # Pair
-                    'p': (k, v),
-                }
-
-                parent_dq.add(data)
-
-            if parent_invocation.parent_invocation_id is not None:
-                # This is the result of a reduction of all of the mapped steps 
-                # that fed us. Therefore, its their parent that owns our result
-                # and must receive it.
-
-                parent_parent_invocation = mr.models.kv.invocation.get(
-                                            workflow, 
-                                            parent_invocation.parent_invocation_id)
-
-                # Decrement the "waiting" counter on the parent of the parent 
-                # (the step that mapped the steps that produced the results 
-                # that we're reducing), or notify that the job is done (if 
-                # there is no parent's parent).
-
-                self.__decrement_parent_invocation(
-                    workflow,
-                    parent_invocation)
-
-                if parent_parent_invocation.mapped_waiting == 0:
-                    # We've posted the reduction of the results of our map step 
-                    # to its parent, and all mapped steps of that parent have 
-                    # now been reported.
-
-                    _logger.debug("Handler for REDUCTION returned a result, "
-                                  "and all results have been rendered for "
-                                  "parent-parent. Reducing for parent [%s].", 
-                                  parent_parent_invocation.invocation_id)
-
-                    pusher = _get_pusher()
-
-                    # Queue a reduction with our parent's parent (the parent of 
-                    # the original mapping). It will access all of the results 
-                    # that have been posted back to it.
-                    pusher.queue_reduce_step_from_parameters(
-                        message_parameters, 
-                        parent_parent_invocation)
-                else:
-                    _logger.debug("Parent invocation [%s] mapped-waiting "
-                                  "count after REDUCE: (%d)", 
-                                  parent_parent_invocation.invocation_id,
-                                  parent_parent_invocation.mapped_waiting)
+                return self.__handle_mapped_dataset_reduce(
+                        message_parameters,
+                        step, 
+                        map_invocation,
+                        workflow, 
+                        request)
             else:
-                # We've reduced our way back up to the original request.
+                _logger.debug("Processing REDUCE [%s] -of- original MAP "
+                              "invocation [%s] that rendered DOWNSTREAM "
+                              "MAPPINGS.",
+                              reduce_invocation.invocation_id, 
+                              map_invocation.invocation_id)
 
-                _logger.debug("No further parents. Marking request as "
-                              "complete: [%s]", request.request_id)
-
-                request.done = True
-                request.save()
+                return self.__handle_mapped_mapping_reduce(
+                        message_parameters,
+                        step, 
+                        map_invocation,
+                        workflow, 
+                        request)
         except:
 # TODO(dustin): Mark the request as failed, and have whatever is blocking on a 
 #               result track down the error message/traceback.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
-            invocation.error = traceback.format_exc()
-            invocation.save()
+            reduce_invocation.error = traceback.format_exc()
+            reduce_invocation.save()
 
             raise
+
+    def __handle_mapped_mapping_reduce(self, message_parameters, step, 
+                                       map_invocation, workflow, request):
+        """Reduce over a mapping invocation that rendered a dataset."""
+
+        # Call the handler with a generator of all of the results to be 
+        # reduced.
+
+        def get_results_gen():
+            """Enumerate all (key, value_list) from all results of all 
+            invocations mapped from this invocation.
+
+            Note that, no matter how good the combiner is, if one step maps 
+            into downstream steps than there could very well have duplicate 
+            keys (which is a relatively normal circumstance, but entirely 
+            unavoidable of multidimensional-mappings).
+            """
+
+            parent_tree = mr.models.kv.trees.invocations.InvocationsTree(
+                            workflow, 
+                            map_invocation)
+
+            for mapped_invocation in parent_tree.list_entities():
+                dq = mr.models.kv.queues.dataset.DatasetQueue(
+                        workflow, 
+                        mapped_invocation,
+                        mr.models.kv.queues.dataset.DT_POST_COMBINE)
+
+                for data in dq.list_data():
+                    yield data
+
+        results_gen = get_results_gen()
+
+        if mr.config.IS_DEBUG is True:
+            results_gen = list(results_gen)
+
+            _logger.debug("(%d) results will be reduced by step [%s] for "
+                          "original invocation [%s].",
+                          len(results_gen), step.reduce_handler_name, 
+                          map_invocation.invocation_id)
+            
+            print('')
+            for (i, data) in enumerate(results_gen):
+                print("Result (%d)\nKey: %s\n Value List: %s" % 
+                      (i, data['k'], data['vl']))
+
+            print('')
+
+        results_gen = ((data['k'], data['vl']) for data in results_gen)
+
+        handler_arguments = {
+            'results': results_gen,
+        }
+
+        reduce_result_gen = self.__call_handler(
+                                workflow,
+                                step.reduce_handler_name, 
+                                handler_arguments)
+# TODO(dustin): We need to translate our list of resultant key-value pairs back 
+#               into key and value-list pairs, for consistency with upstream 
+#               reductions.
+        if mr.config.IS_DEBUG is True:
+            reduce_result_gen = list(reduce_result_gen)            
+            _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
+                          step.reduce_handler_name, 
+                          map_invocation.invocation_id,
+                          pprint.pformat(reduce_result_gen))
+
+        if map_invocation.parent_invocation_id is not None:
+            decrement_invocation = mr.models.kv.invocation.get(
+                                    workflow, 
+                                    map_invocation.parent_invocation_id)
+        else:
+            decrement_invocation = None
+
+        self.__store_reduction_result(
+            message_parameters,
+            reduce_result_gen, 
+            map_invocation,
+            decrement_invocation=decrement_invocation)
+
+    def __handle_mapped_dataset_reduce(self, message_parameters, step, 
+                                       map_invocation, workflow, request):
+        """Reduce over a mapping invocation that mapped to downstream steps."""
+
+        # Call the handler with a generator of all of the results to be 
+        # reduced.
+
+        dq = mr.models.kv.queues.dataset.DatasetQueue(
+                workflow, 
+                map_invocation,
+                mr.models.kv.queues.dataset.DT_POST_COMBINE)
+
+        results_gen = dq.list_data()
+
+        if mr.config.IS_DEBUG is True:
+            results_gen = list(results_gen)
+
+            _logger.debug("(%d) results will be reduced by step [%s] for "
+                          "original invocation [%s].",
+                          len(results_gen), step.reduce_handler_name, 
+                          map_invocation.invocation_id)
+            
+            print('')
+            for (i, data) in enumerate(results_gen):
+                print("Result (%d)\nKey: %s\n Value List: %s" % 
+                      (i, data['k'], data['vl']))
+
+            print('')
+
+        results_gen = ((data['k'], data['vl']) for data in results_gen)
+
+        handler_arguments = {
+            'results': results_gen,
+        }
+
+        reduce_result_gen = self.__call_handler(
+                                workflow,
+                                step.reduce_handler_name, 
+                                handler_arguments)
+# TODO(dustin): We need to translate our list of resultant key-value pairs back 
+#               into key and value-list pairs, for consistency with upstream 
+#               reductions.
+        if mr.config.IS_DEBUG is True:
+            reduce_result_gen = list(reduce_result_gen)            
+            _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
+                          step.reduce_handler_name, 
+                          map_invocation.invocation_id, 
+                          pprint.pformat(reduce_result_gen))
+
+        if map_invocation.parent_invocation_id is not None:
+            decrement_invocation = mr.models.kv.invocation.get(
+                                    workflow, 
+                                    map_invocation.parent_invocation_id)
+        else:
+            decrement_invocation = None
+
+        self.__store_reduction_result(
+            message_parameters,
+            reduce_result_gen, 
+            map_invocation,
+            decrement_invocation=decrement_invocation)
+
+    def __store_reduction_result(self, message_parameters, reduce_result_gen,
+                                 store_to_invocation, 
+                                 decrement_invocation=None):
+        """Store the reduction result. This is code common to both/all kinds of 
+        reduction.
+        """
+
+        workflow = message_parameters.workflow
+        request = message_parameters.request
+
+        # Store result
+
+        _logger.debug("Storing reduction result: "
+                      "[%s] [%s]", 
+                      store_to_invocation.invocation_id,
+                      store_to_invocation.direction)
+
+        dq = mr.models.kv.queues.dataset.DatasetQueue(
+                workflow, 
+                store_to_invocation,
+                mr.models.kv.queues.dataset.DT_POST_REDUCE)
+
+        for (k, v) in reduce_result_gen:
+            data = {
+                # Pair
+                'p': (k, v),
+            }
+
+            dq.add(data)
+
+        _logger.debug("We've posted the reduction result to invocation: "
+                      "[%s]", store_to_invocation.invocation_id)
+
+        if decrement_invocation is not None:
+            _logger.debug("Decrementing invocation: [%s] WAITING=(%d)",
+                          decrement_invocation.invocation_id,
+                          decrement_invocation.mapped_waiting)
+
+            # Decrement the "waiting" counter on the parent of the parent 
+            # (the step that mapped the steps that produced the results 
+            # that we're reducing), or notify that the job is done (if 
+            # there is no parent's parent).
+
+            decrement_invocation = self.__decrement_invocation(
+                                    workflow, 
+                                    decrement_invocation)
+
+            if decrement_invocation.mapped_waiting == 0:
+                # We've posted the reduction of the results of our map step 
+                # to its parent, and all mapped steps of that parent have 
+                # now been reported.
+
+                _logger.debug("Invocation [%s] mapped-waiting count has "
+                              "dropped to (0), and will be reduced.", 
+                              decrement_invocation.invocation_id)
+
+                pusher = _get_pusher()
+
+                # Queue a reduction with our parent's parent (the parent of 
+                # the original mapping). It will access all of the results 
+                # that have been posted back to it.
+                pusher.queue_reduce_step_from_parameters(
+                    message_parameters, 
+                    decrement_invocation)
+            else:
+                _logger.debug("Invocation [%s] mapped-waiting "
+                              "count after REDUCE: (%d)", 
+                              decrement_invocation.invocation_id,
+                              decrement_invocation.mapped_waiting)
+        else:
+            # We've reduced our way back up to the original request.
+
+            _logger.debug("No further parents. Marking request as "
+                          "complete: [%s]", request.request_id)
+
+            request.done = True
+            request.save()
 
 _sp = _StepProcessor()
 

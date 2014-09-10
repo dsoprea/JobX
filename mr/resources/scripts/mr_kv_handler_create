@@ -51,4 +51,4 @@ s = mr.models.kv.handler.Handler(
 
 s.save()
 
-pprint.pprint(s)
+print(s.get_debug())

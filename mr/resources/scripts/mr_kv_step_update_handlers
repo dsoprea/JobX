@@ -1,0 +1,101 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+import pprint
+
+import mr.config.log
+import mr.models.kv.workflow
+import mr.models.kv.step
+import mr.models.kv.handler
+
+description = "Get all handlers entities for a workflow"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument(
+    'workflow_name', 
+    help='Workflow name')
+
+parser.add_argument(
+    'handler_type', 
+    help='Handler type')
+
+parser.add_argument(
+    'if_name', 
+    help='Current name')
+
+parser.add_argument(
+    'to_name', 
+    help='New name')
+
+parser.add_argument(
+    '-s', '--simulate-only', 
+    action='store_true',
+    help='Whether to just scan without changing.')
+
+args = parser.parse_args()
+
+handler_type = args.handler_type
+if_name = args.if_name
+to_name = args.to_name
+simulate_only = args.simulate_only
+
+if handler_type not in mr.models.kv.handler.HANDLER_TYPES:
+    print("Handler type [%s] is not value. Valid types: %s" % 
+          (handler_type, mr.models.kv.handler.HANDLER_TYPES,))
+
+    sys.exit(1)
+
+if simulate_only is True:
+    print("SIMULATION ONLY")
+    print('')
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+
+try:
+    to_handler = mr.models.kv.handler.get(workflow, to_name)
+except KeyError:
+    print("'to' handler is not valid: [%s]" % (to_name,))
+    sys.exit(2)
+
+if to_handler.handler_type != handler_type:
+    raise ValueError("'to' handler exists, but is the wrong type: [%s]" % 
+                     (to_handler.handler_type))
+
+steps = mr.models.kv.step.Step.list(workflow.workflow_name)
+
+for step in steps:
+    matched = False
+    if handler_type == mr.models.kv.handler.HT_MAPPER:
+        if step.map_handler_name == if_name:
+            if simulate_only is False:
+                step.map_handler_name = to_name
+
+            matched = True
+    elif handler_type == mr.models.kv.handler.HT_COMBINER:
+        if step.combine_handler_name == if_name:
+            if simulate_only is False:
+                step.combine_handler_name = to_name
+
+            matched = True
+    elif handler_type == mr.models.kv.handler.HT_REDUCER:
+        if step.reduce_handler_name == if_name:
+            if simulate_only is False:
+                step.reduce_handler_name = to_name
+
+            matched = True
+    else:
+        # Just in case we add another type of handler, later.
+        raise ValueError("Handler type [%s] was supposed to be valid, but is "
+                         "not handled: [%s]" % (handler_type,))
+
+    if matched:
+        print("Step match: [%s] [%s]" % (step.step_name, step.description))
+
+        if simulate_only is False:
+            step.save()

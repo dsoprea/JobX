@@ -44,6 +44,9 @@ class Handler(mr.models.kv.model.Model):
         return (self.workflow_name, self.handler_name)
 
     def presave(self):
+# TODO(dustin): Run the handler through a unit-test to verify the inputs and 
+#               outputs (whether we're mapping to a downstream test or 
+#               returning a result).
         defined_arguments_s = set([x[0] for x in self.argument_spec])
 
         if self.handler_type == HT_MAPPER:
