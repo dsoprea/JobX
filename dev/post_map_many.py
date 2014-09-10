@@ -1,5 +1,6 @@
 #!/usr/bin/env python2.7
 
+import sys
 import requests
 import json
 
@@ -21,6 +22,9 @@ r = requests.post(url, data=json.dumps(data), headers=headers)
 r.raise_for_status()
 
 # Print the result nice.
+
+sys.stderr.write("Request ID: [%s]\n\n" % 
+                 (r.headers['X-MR-REQUEST-ID'],))
 
 raw = r.json()
 result = dict(raw['result'])
