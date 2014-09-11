@@ -18,3 +18,19 @@ SCOPE_INJECTED_TYPES = {
     'MrConfigureToMap': MrConfigureToMap,
     'MrConfigureToReturn': MrConfigureToReturn,
 }
+
+
+class WorkflowScopeFactory(object):
+    """Factory that renders a HandlerScopeFactory for a given workflow."""
+
+    def get_handler_scope_factory(self, workflow):
+        raise NotImplementedError()
+
+
+class HandlerScopeFactory(object):
+    """Factory class that renders a scope dictionary for a given handler in a 
+    particular workflow.
+    """
+
+    def get_scope(self, handler_definition):
+        raise NotImplementedError()

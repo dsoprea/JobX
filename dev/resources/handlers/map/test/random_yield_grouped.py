@@ -14,7 +14,7 @@ handler_type: mapper
 
 import random
 
-# we're 
+# We're only using the value in the first pair.
 
 pair = arguments[0]
 value = pair[1]

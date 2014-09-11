@@ -136,6 +136,11 @@ class Model(mr.models.kv.common.CommonKv):
 
             raise
 
+    def __str__(self):
+        cls = self.__class__
+
+        return ('<%s>' % (getattr(self, cls.key_field),))
+
     def __repr__(self):
         cls = self.__class__
 

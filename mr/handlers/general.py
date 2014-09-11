@@ -22,7 +22,6 @@ HANDLER_DEFINITION_CLS = collections.namedtuple(
                              'cast_arguments'])
 
 
-
 class HandlerFormatException(Exception):
     pass
 
@@ -30,9 +29,17 @@ class HandlerFormatException(Exception):
 class Handlers(object):
     """The base-class of our handler code libraries."""
 
-    def __init__(self, source, library):
+    def __init__(self, workflow, source, library, handler_scope_factory=None):
+        assert issubclass(
+                handler_scope_factory.__class__, 
+                mr.handlers.scope.HandlerScopeFactory) is True or \
+               handler_scope_factory is None
+
+        self.__workflow = workflow
         self.__source = source
         self.__library = library
+        self.__hsf = handler_scope_factory
+
         self.__compiled = {}
 
 # TODO(dustin): We need to do this periodically.
@@ -123,6 +130,11 @@ class Handlers(object):
 
             hd = self.__library.get_handler(name)
             processor = mr.handlers.utility.get_processor(hd.source_type)
+
+            handler_scope = scope
+
+            if self.__hsf is not None:
+                handler_scope.update(self.__hsf.get_scope(hd))
 
             (meta, compiled) = processor.compile(
                                 name, 
