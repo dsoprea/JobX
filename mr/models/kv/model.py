@@ -225,6 +225,12 @@ class Model(mr.models.kv.common.CommonKv):
     def postsave(self):
         pass
 
+    def predelete(self):
+        pass
+
+    def postdelete(self):
+        pass
+
     @classmethod
     def atomic_update(cls, get_cb, set_cb, 
                       max_attempts=\
@@ -275,10 +281,14 @@ class Model(mr.models.kv.common.CommonKv):
     def delete(self):
         cls = self.__class__
 
+        self.predelete()
+
         identity = self.get_identity()
 
         cls.delete_entity(identity)
         self.__is_stored = False
+
+        self.postdelete()
 
     def refresh(self):
         cls = self.__class__
