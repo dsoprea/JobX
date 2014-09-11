@@ -28,3 +28,7 @@ try:
         os.environ['MR_WORKFLOW_SCOPE_FACTORY_FQ_CLASS']
 except KeyError:
     WORKFLOW_SCOPE_FACTORY_FQ_CLASS = None
+
+HANDLER_UPDATE_INTERVAL_S = int(os.environ.get(
+                                    'MR_HANDLER_UPDATE_CHECK_INTERVAL_S', 
+                                    '10'))

@@ -3,6 +3,8 @@ import hashlib
 import os
 import logging
 import collections
+import time
+import threading
 
 import mr.models.kv.handler
 import mr.models.kv.workflow
@@ -42,8 +44,33 @@ class Handlers(object):
 
         self.__compiled = {}
 
-# TODO(dustin): We need to do this periodically.
-        self.__update_handlers()
+        self.__schedule_update_check()
+
+    def __del__(self):
+        self.__ucl_exit_ev.set()
+        self.__ucl_t.join()
+
+    def __schedule_update_check(self):
+        """Schedule a continuous check of the handler states, so that we'll 
+        update them when they change. Note that the default/original 
+        implementation of our handlers' source interface checks the KV, not the
+        filesystem, since the filesystem is only a concern of the script that 
+        loads them into the KV. A filesystem-auditing tool would have to be 
+        created in order to update the KV when the files change.
+        """
+
+        _logger.info("Scheduling the handler update-check.")
+
+        self.__ucl_exit_ev = threading.Event()
+
+        self.__ucl_t = threading.Thread(target=self.__update_check_loop)
+        self.__ucl_t.start()
+
+    def __update_check_loop(self):
+        while self.__ucl_exit_ev.is_set() is False:
+            _logger.debug("Commencing update check.")
+            self.__update_handlers()
+            time.sleep(mr.config.handler.HANDLER_UPDATE_INTERVAL_S)
 
     def __update_handlers(self):
         """Push all of the current handlers, and their state string."""
@@ -65,8 +92,8 @@ class Handlers(object):
         # The code HAS changed. Determine what has changed and how.
 
         stored_handlers = list(self.__library.list_handlers())
-        stored_handler_versions_s = set(stored_handlers)
-        stored_handler_names_s = set([n for (n, v) in stored_handlers])
+        stored_handler_versions_s = set([(n, v) for (n, a, v) in stored_handlers])
+        stored_handler_names_s = set([n for (n, a, v) in stored_handlers])
 
         source_handlers = list(self.__source.list_handlers())
         source_handler_versions_s = set(source_handlers)

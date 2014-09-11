@@ -68,6 +68,9 @@ class Handler(mr.models.kv.model.Model):
     def postsave(self):
         mr.handlers.general.update_workflow_handle_state(self.workflow_name)
 
+    def postdelete(self):
+        mr.handlers.general.update_workflow_handle_state(self.workflow_name)
+
 # TODO(dustin): We need to allow optional parameters, if for nothing else then 
 #               backwards compatibility.
     def cast_arguments(self, arguments_dict):
