@@ -25,3 +25,5 @@ def get_current_workflows():
     return os.environ['MR_WORKFLOW_NAMES'].split(',')
 
 CONSUMER_ENABLED = bool(int(os.environ.get('MR_CONSUME', '1')))
+
+DISPATCH_CLEANUP_INTERVAL_S = 1
