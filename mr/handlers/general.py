@@ -12,6 +12,7 @@ import mr.handlers.utility
 import mr.handlers.scope
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 HANDLER_DEFINITION_CLS = collections.namedtuple(
                             'HandlerDefinition', 
