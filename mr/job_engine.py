@@ -475,11 +475,13 @@ class _StepProcessor(object):
                     invocation,
                     message_parameters)
         except:
-# TODO(dustin): Mark the request as failed, and have whatever is blocking on a 
-#               result track down the error message/traceback.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
             invocation.save()
+
+            request.failed_invocation_id = invocation.invocation_id
+            request.done = True
+            request.save()
 
             raise
 
@@ -562,11 +564,13 @@ class _StepProcessor(object):
                         workflow, 
                         request)
         except:
-# TODO(dustin): Mark the request as failed, and have whatever is blocking on a 
-#               result track down the error message/traceback.
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             reduce_invocation.error = traceback.format_exc()
             reduce_invocation.save()
+
+            request.failed_invocation_id = reduce_invocation.invocation_id
+            request.done = True
+            request.save()
 
             raise
 
