@@ -44,6 +44,9 @@ _logger = logging.getLogger(__name__)
 #               sacrificing durability (if the process going down, there should 
 #               still be a high degree of synchronization).
 
+# TODO(dustin): We should have a way to render a physical image of a graph, to 
+#               express what happens in a request.
+
 
 class _QueuePusher(object):
     def __init__(self):
@@ -69,7 +72,6 @@ class _QueuePusher(object):
 
     def queue_reduce_step_from_parameters(self, message_parameters, 
                                           parent_invocation):
-# TODO(dustin): This still might need to be reflowed to fit changes.
         """We're reflecting (switch directions from mapping to reduction). The 
         current step is an action step (no mappings were done). The next 
         invocation will successively take the invocation-IDs of one parent to 
@@ -414,15 +416,13 @@ class _StepProcessor(object):
         _logger.debug("Processing MAP: [%s]", invocation.invocation_id)
 
         try:
-            # Call the handler.
+            ## Call the handler.
 
             dq = mr.models.kv.queues.dataset.DatasetQueue(
                     workflow, 
                     invocation, 
                     mr.models.kv.queues.dataset.DT_ARGUMENTS)
-# TODO(dustin): Arguments should be pairs of keys and value-lists from the very 
-#               moment the request is received, since downstream mappings 
-#               receive them that way.
+
             # Enumerate the 'p' member of every record.
             arguments = (d['p'] for d in dq.list_data())
 
@@ -627,9 +627,7 @@ class _StepProcessor(object):
                                 workflow,
                                 step.reduce_handler_name, 
                                 handler_arguments)
-# TODO(dustin): We need to translate our list of resultant key-value pairs back 
-#               into key and value-list pairs, for consistency with upstream 
-#               reductions.
+
         if mr.config.IS_DEBUG is True:
             reduce_result_gen = list(reduce_result_gen)            
             _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
@@ -689,9 +687,7 @@ class _StepProcessor(object):
                                 workflow,
                                 step.reduce_handler_name, 
                                 handler_arguments)
-# TODO(dustin): We need to translate our list of resultant key-value pairs back 
-#               into key and value-list pairs, for consistency with upstream 
-#               reductions.
+
         if mr.config.IS_DEBUG is True:
             reduce_result_gen = list(reduce_result_gen)            
             _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
@@ -828,16 +824,14 @@ class _RequestReceiver(object):
 
         _logger.debug("Retrieved result for request:\n%s", results)
 
-        result_pairs = [d['p'] for d in results]
+        result_pair_gen = (d['p'] for d in results)
 
         if mr.config.IS_DEBUG is True:
+            result_pair_gen = list(result_pair_gen)
             _logger.debug("Result to return for request:\n%s", 
-                          pprint.pformat(result_pairs))
+                          pprint.pformat(result_pair_gen))
 
-        return { 
-            'request_id': request.request_id,
-            'result': result_pairs,
-        }
+        return (request.request_id, result_pair_gen)
 
     def process_request(self, message_parameters):
         self.__push_request(message_parameters)
