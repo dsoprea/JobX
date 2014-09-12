@@ -9,3 +9,4 @@
 /dev/etcd/
 /*prj
 /mr/resources/fake_spool_path/*
+.DS_Store
