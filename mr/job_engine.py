@@ -58,10 +58,7 @@ class _QueuePusher(object):
 
         replacements = {
             'workflow_name': message_parameters.workflow.workflow_name,
-# TODO(dustin): This needs to be determined by the handler that will never be 
-#               invoked (the "map_handler_name" handler of the 
-#               message_parameters.step entity)
-            'capability_name': 'all',
+            'capability_name': message_parameters.handler.required_capability,
         }
 
         topic = mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements
@@ -85,6 +82,10 @@ class _QueuePusher(object):
         reduce_step = mr.models.kv.step.get(
                         message_parameters.workflow, 
                         parent_invocation.step_name)
+
+        reduce_handler = mr.models.kv.handler.get(
+                            message_parameters.workflow, 
+                            reduce_step.reduce_handler_name)
 
         _logger.debug("Queueing reduce of step [%s] for parent invocation: [%s]", 
                       reduce_step.step_name, parent_invocation.invocation_id)
@@ -127,7 +128,7 @@ class _QueuePusher(object):
             request=message_parameters.request,
             job=message_parameters.job,
             step=reduce_step,
-            handler=reduce_step.reduce_handler_name)
+            handler=reduce_handler.handler_name)
 
         assert reduce_parameters.handler is not None
 
@@ -135,12 +136,11 @@ class _QueuePusher(object):
                       reduce_parameters.invocation.invocation_id, 
                       reduce_step.step_name)
 
+        pprint.pprint(reduce_parameters)
+
         replacements = {
             'workflow_name': workflow.workflow_name,
-# TODO(dustin): This needs to be determined by the handler that will never be 
-#               invoked (the "map_handler_name" handler of the 
-#               message_parameters.step entity)
-            'capability_name': 'all',
+            'capability_name': reduce_handler.required_capability,
         }
 
         topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements

@@ -39,6 +39,7 @@ class Handler(mr.models.kv.model.Model):
     source_code = mr.models.kv.model.Field()
     version = mr.models.kv.model.Field(is_required=False)
     handler_type = mr.models.kv.model.EnumField(HANDLER_TYPES)
+    required_capability = mr.models.kv.model.Field(default_value='all')
 
     def get_identity(self):
         return (self.workflow_name, self.handler_name)
