@@ -19,8 +19,7 @@ QueueMessageV1 = collections.namedtuple(
                     ['workflow_name',
                      'request_id', 
                      'invocation_id',
-                     'step_name'])#, 
-                     #'arguments'])
+                     'step_name'])
 
 
 class _QueueDataPackager(object):
@@ -111,9 +110,6 @@ class _QueueMessageFunnel(object):
                 mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS) is True
 
         workflow = message_parameters.workflow
-#        distilled_arguments = message_parameters.arguments \
-#                              if message_parameters.arguments is not None \
-#                              else None
 
         # This implements whatever the current message format is.
 
@@ -121,8 +117,7 @@ class _QueueMessageFunnel(object):
                 workflow_name=workflow.workflow_name,
                 request_id=message_parameters.request.request_id,
                 invocation_id=message_parameters.invocation.invocation_id,
-                step_name=message_parameters.step.step_name)#,
-                #arguments=distilled_arguments)
+                step_name=message_parameters.step.step_name)
 
     def inflate(self, format_version, deflated):
         """Reconstruct the battery of models and arguments that describes the 
@@ -131,7 +126,7 @@ class _QueueMessageFunnel(object):
 
         if format_version == _QDF_1:
             (workflow_name, request_id, invocation_id, step_name) = deflated
-#, arguments
+
             wm = mr.workflow_manager.get_wm()
             managed_workflow = wm.get(workflow_name)
             workflow = managed_workflow.workflow
@@ -169,19 +164,17 @@ class _QueueMessageFunnel(object):
                       "JOB:\n  %s\n"
                       "STEP:\n  %s\n"
                       "HANDLER:\n  %s\n"
-#                      "ARGUMENTS:\n  %s\n"
                       "%s",
                       border, workflow, invocation, request, job, step, 
                       handler, border)
-#, arguments
+
         return mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
                 workflow=workflow,
                 invocation=invocation,
                 request=request,
                 job=job,
                 step=step,
-                handler=handler)#,
-                #arguments=arguments)
+                handler=handler)
 
 _qmf = _QueueMessageFunnel()
 
