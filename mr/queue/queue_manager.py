@@ -20,14 +20,22 @@ def _make_queue(workflow_names):
 
     topics = []
     for workflow_name in workflow_names:
-        replacements = {
-            'workflow_name': workflow_name,
-        }
+        # Every system will/should have at least one capability assigned to it 
+        # (at least "all"). This allows us to organize our systems in terms of 
+        # things that some job systems can do that others can not.
+        #
+        # Subscribe to topics that workflow and capability specific: we'll only 
+        # receive what we can handle.
+        for capability_name in mr.config.queue.LOCAL_SYSTEM_CAPABILITIES:
+            replacements = {
+                'workflow_name': workflow_name,
+                'capability_name': capability_name.lower(),
+            }
 
-        topics.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE %
-                        replacements)
-        topics.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE %
-                        replacements)
+            topics.append(mr.config.queue.TOPIC_NAME_MAP_TEMPLATE %
+                            replacements)
+            topics.append(mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE %
+                            replacements)
 
     _logger.info("Generated topics from workflows:\nWorkflow(s): %s\n"
                  "Topics: %s", workflow_names, topics)

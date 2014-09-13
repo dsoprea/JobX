@@ -33,17 +33,26 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
         # itself.
 
         topic = connection.context.topic
+        (_, workflow_name, class_, capability_name) = topic.split('.')
 
-        if topic.endswith('.map') is True:
-            class_ = 'map'
-        elif topic.endswith('.reduce') is True:
-            class_ = 'reduce'
-        else:
-            raise ValueError("Topic is not valid for classification: [%s]" % 
-                             (topic,))
+        # We don't actually need the capability. We would've only received the 
+        # message if we declared ourselves to support this capability.
 
-        return (class_, None)
+        context = {
+            'capability_name': capability_name,
+        }
 
+        _logger.debug("Message has class of [%s] and capability of [%s].", 
+                      capability_name.upper())
+
+        return (class_, context)
+# TODO(dustin): We'll need to dynamically route here from the default message 
+#               handler for those messages that used an extended topic-name to 
+#               route to this host for a particular capability.
+#
+#               This applies to both handle_map and handle_reduction, whose 
+#               user-defined handler may both require specific capabilities or 
+#               licenses.
     def handle_map(self, connection, message, context):
         """We are receiving a map-reduce message (that's all we'll receive). 
         Forward it to standard map-reduce message processing.
@@ -181,9 +190,10 @@ class _NsqQueueConsumer(mr.queue.queue_consumer.QueueConsumer):
 
     def __init__(self, topics):
         super(_NsqQueueConsumer, self).__init__()
-
         node_collection = mr.config.nsq_queue.NODE_COLLECTION
 
+# TODO(dustin): We might have to produce a list of random channels so that 
+#               we're properly parallelizing.
         context_list = [(topic, mr.config.nsq_queue.CHANNEL) 
                         for topic 
                         in topics]

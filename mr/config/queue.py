@@ -13,8 +13,8 @@ else:
 
 IS_MULTITHREADED = bool(int(os.environ.get('MR_MULTITHREADED', '1')))
 
-TOPIC_NAME_MAP_TEMPLATE = 'mr.%(workflow_name)s.map'
-TOPIC_NAME_REDUCE_TEMPLATE = 'mr.%(workflow_name)s.reduce'
+TOPIC_NAME_MAP_TEMPLATE = 'mr.%(workflow_name)s.map.%(capability_name)s'
+TOPIC_NAME_REDUCE_TEMPLATE = 'mr.%(workflow_name)s.reduce.%(capability_name)s'
 
 def get_current_workflows():
     """Lazy-load the workflow name(s). this won't [probably] be necessary unless 
@@ -27,3 +27,5 @@ def get_current_workflows():
 CONSUMER_ENABLED = bool(int(os.environ.get('MR_CONSUME', '1')))
 
 DISPATCH_CLEANUP_INTERVAL_S = 1
+
+LOCAL_SYSTEM_CAPABILITIES = os.environ.get('MR_SYSTEM_CAPABILITIES', 'all').split(',')

@@ -58,6 +58,10 @@ class _QueuePusher(object):
 
         replacements = {
             'workflow_name': message_parameters.workflow.workflow_name,
+# TODO(dustin): This needs to be determined by the handler that will never be 
+#               invoked (the "map_handler_name" handler of the 
+#               message_parameters.step entity)
+            'capability_name': 'all',
         }
 
         topic = mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements
@@ -133,6 +137,10 @@ class _QueuePusher(object):
 
         replacements = {
             'workflow_name': workflow.workflow_name,
+# TODO(dustin): This needs to be determined by the handler that will never be 
+#               invoked (the "map_handler_name" handler of the 
+#               message_parameters.step entity)
+            'capability_name': 'all',
         }
 
         topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements
