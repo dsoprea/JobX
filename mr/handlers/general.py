@@ -143,6 +143,27 @@ class Handlers(object):
 
         self.__compile_handlers()
 
+    def __compile_handler(self, hd, arg_names, scope=None):
+        if scope is None:
+            scope = {}
+
+        scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
+
+        processor = mr.handlers.utility.get_processor(hd.source_type)
+
+        handler_scope = scope
+
+        if self.__hsf is not None:
+            handler_scope.update(self.__hsf.get_scope(hd))
+
+        (meta, compiled) = processor.compile(
+                            hd.name, 
+                            arg_names, 
+                            hd.source_code, 
+                            scope=scope)
+ 
+        return (meta, compiled)
+
     def __compile_handlers(self):
         scope = {}
         scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
@@ -157,19 +178,8 @@ class Handlers(object):
             _logger.info("Compiling handler: [%s]", name)
 
             hd = self.__library.get_handler(name)
-            processor = mr.handlers.utility.get_processor(hd.source_type)
+            (meta, compiled) = self.__compile_handler(hd, arg_names, scope=scope)
 
-            handler_scope = scope
-
-            if self.__hsf is not None:
-                handler_scope.update(self.__hsf.get_scope(hd))
-
-            (meta, compiled) = processor.compile(
-                                name, 
-                                arg_names, 
-                                hd.source_code, 
-                                scope=scope)
-        
             self.__compiled[name] = compiled
 
         if handler_count == 0:
@@ -190,12 +200,12 @@ class Handlers(object):
         return handler(*arguments_list)
 
 def update_workflow_handle_state(workflow_name):
-    _logger.info("Updating workflow with new handlers state.")
+    _logger.debug("Updating workflow with new handlers state.")
 
     def calculate_state():
         # Stamp a hash that represents -all- of the handlers' states on the 
         # workflow.
-        _logger.info("Calculating handlers state.")
+        _logger.debug("Calculating handlers state.")
 
         versions = (str(h.version) 
                     for h 

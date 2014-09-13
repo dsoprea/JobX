@@ -25,6 +25,11 @@ class SourceAdapter(object):
 
         raise NotImplementedError()
 
+    def get_definition_from_obj(self, handler):
+        """Return a handler-definition from the object."""
+
+        raise NotImplementedError()
+
     def get_handlers_state(self, handlers=None):
         """Return a string that will change any time one of the handlers 
         changes.
@@ -48,10 +53,8 @@ class KvSourceAdapter(SourceAdapter):
     def list_handlers(self):
         return self.__enumerate_handlers()
 
-    def get_handler(self, name):
-        handler = mr.models.kv.handler.get(self.__workflow, name)
-
-        hd = mr.handlers.general.HANDLER_DEFINITION_CLS(
+    def get_definition_from_obj(self, handler):
+        return mr.handlers.general.HANDLER_DEFINITION_CLS(
                 name=handler.handler_name,
                 version=handler.version,
                 description=handler.description,
@@ -60,7 +63,9 @@ class KvSourceAdapter(SourceAdapter):
                 source_type=handler.source_type,
                 cast_arguments=handler.cast_arguments)
 
-        return hd
+    def get_handler(self, name):
+        handler = mr.models.kv.handler.get(self.__workflow, name)
+        return self.get_definition_from_obj(handler)
 
     def get_handlers_state(self):
         self.__workflow.refresh()

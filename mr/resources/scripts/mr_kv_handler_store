@@ -17,6 +17,7 @@ import mr.config.handler
 import mr.models.kv.step
 import mr.models.kv.workflow
 import mr.models.kv.handler
+import mr.handlers.utility
 
 # Documentation parsers
 _DP_YAML = 'yaml'
@@ -41,7 +42,18 @@ parser.add_argument(
     action='store_true', 
     help="Just simulate")
 
+parser.add_argument(
+    '-f', '--force_update', 
+    action='store_true', 
+    help="Update even if unchanged")
+
 args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+
+root_path = args.path.rstrip('/')
+simulate_only = args.simulate_only
+force_update = args.force_update
 
 def _get_recursive_file_gen(root_path):
     for (path, dir_entries, file_entries) in os.walk(root_path):
@@ -69,7 +81,7 @@ def _get_recursive_file_gen(root_path):
             rel_filepath = os.path.join(rel_path, filename)
             yield (filepath, rel_filepath, extension, handler_name)
 
-def _scan_files(path, workflow_name, simulate_only=False):
+def _scan_files(path):
     print("Scanning files (and adding/updating handlers):")
     print('')
 
@@ -87,9 +99,7 @@ def _scan_files(path, workflow_name, simulate_only=False):
             _check_handler(
                 filepath, 
                 handler_name, 
-                source_type, 
-                workflow_name, 
-                simulate_only=simulate_only)
+                source_type)
 
             handlers_s.add(handler_name)
 
@@ -98,7 +108,8 @@ def _scan_files(path, workflow_name, simulate_only=False):
 
     handlers_to_delete = [handler 
                           for handler 
-                          in mr.models.kv.handler.Handler.list(workflow_name)
+                          in mr.models.kv.handler.Handler.list(
+                                workflow.workflow_name)
                           if handler.handler_name not in handlers_s]
 
     if handlers_to_delete:
@@ -107,7 +118,7 @@ def _scan_files(path, workflow_name, simulate_only=False):
         print("Identifying handlers currently being used.")
 
         used_handlers = {}
-        for step in mr.models.kv.step.Step.list(workflow_name):
+        for step in mr.models.kv.step.Step.list(workflow.workflow_name):
             try:
                 used_handlers[step.map_handler_name] = [step.step_name]
             except KeyError:
@@ -184,7 +195,7 @@ def _parse_doc_string(doc_string):
 
     return (description, meta)
 
-def _check_handler(filepath, name, source_type, workflow_name, simulate_only=False):
+def _check_handler(filepath, name, source_type):
     with open(filepath) as f:
         source_code = f.read()
 
@@ -215,38 +226,44 @@ def _check_handler(filepath, name, source_type, workflow_name, simulate_only=Fal
                          (name, required_fields_s, available_fields_s))
 
     version = hashlib.sha1(doc_string + source_code).hexdigest()
-    workflow = mr.models.kv.workflow.get(workflow_name)
 
     try:
         handler = mr.models.kv.handler.get(workflow, name)
     except KeyError:
         _create_handler(
-            workflow, 
             name, 
             meta, 
             description, 
             source_type, 
             source_code, 
-            version,
-            simulate_only=simulate_only)
+            version)
     else:
-        if handler.version != version:
+        if handler.version != version or force_update:
             _update_handler(
                 handler, 
                 meta, 
                 description,
                 source_type,
                 source_code, 
-                version, 
-                simulate_only=simulate_only)
+                version)
         else:
             print("[%s]: Not changed." % (name,))
 
-def _create_handler(workflow, name, meta, description, source_type, 
-                    source_code, version, simulate_only=False):
+def _validate_handler(handler):
+    """See if we can naively compile the code."""
+
+    processor = mr.handlers.utility.get_processor(handler.source_type)
+
+    _logger.debug("Attempting to compile routine [%s] with processor [%s]." % 
+                  (handler.handler_name, processor.__class__.__name__))
+
+    arg_names = [k for (k, v) in handler.argument_spec]
+
+    processor.compile(handler.handler_name, arg_names, handler.source_code)
+
+def _create_handler(name, meta, description, source_type, source_code, version):
     print("[%s]: Creating." % (name,))
 
-# TODO(dustin): Compile the code so as to test it.
 # TODO(dustin): We might also want to require "test" arguments and a test 
 #               result, for unit-tests.
 
@@ -261,14 +278,15 @@ def _create_handler(workflow, name, meta, description, source_type,
                 handler_type=meta['handler_type'],
                 required_capability=meta['required_capability'])
 
+    _validate_handler(handler)
+
     if simulate_only is False:
         handler.save()
 
 def _update_handler(handler, meta, description, source_type, source_code, 
-                    version, simulate_only=False):
+                    version):
     print("[%s]: Updating." % (handler.handler_name,))
 
-# TODO(dustin): Compile the code so as to test it.
 # TODO(dustin): We might also want to require "test" arguments and a test 
 #               result, for unit-tests.
 
@@ -279,13 +297,13 @@ def _update_handler(handler, meta, description, source_type, source_code,
     handler.version = version
     handler.handler_type = meta['handler_type']
 
+    _validate_handler(handler)
+
     if simulate_only is False:
         handler.save()
 
-if args.simulate_only is True:
+if simulate_only is True:
     print("SIMULATION ONLY!")
     print('')
 
-root_path = args.path.rstrip('/')
-
-_scan_files(root_path, args.workflow_name, simulate_only=args.simulate_only)
+_scan_files(root_path)
