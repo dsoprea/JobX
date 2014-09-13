@@ -250,15 +250,16 @@ def _create_handler(workflow, name, meta, description, source_type,
 # TODO(dustin): We might also want to require "test" arguments and a test 
 #               result, for unit-tests.
 
-    handler = mr.models.kv.handler.create(
-                workflow,
+    handler = mr.models.kv.handler.Handler(
+                workflow_name=workflow.workflow_name,
                 handler_name=name,
                 description=description,
                 argument_spec=meta['argument_spec'],
                 source_type=source_type,
                 source_code=source_code,
                 version=version,
-                handler_type=meta['handler_type'])
+                handler_type=meta['handler_type'],
+                required_capability=meta['required_capability'])
 
     if simulate_only is False:
         handler.save()

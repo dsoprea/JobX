@@ -108,9 +108,3 @@ def get(workflow, handler_name):
             handler_name)
 
     return obj
-
-def create(workflow, **fields):
-    obj = Handler(workflow_name=workflow.workflow_name, **fields)
-    obj.save()
-
-    return obj

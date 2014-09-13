@@ -23,6 +23,10 @@ parser.add_argument('description', help='Description')
 parser.add_argument('source_type', help='Source language')
 parser.add_argument('handler_type', help='Handler type')
 
+parser.add_argument('-r', '--required-capability', 
+                    default='all', 
+                    help='Handler type')
+
 parser.add_argument('-a', '--argument', 
                     required=True, 
                     action='append', 
@@ -47,7 +51,8 @@ s = mr.models.kv.handler.Handler(
         argument_spec=args.argument,
         source_code=source_code,
         source_type=args.source_type,
-        handler_type=args.handler_type)
+        handler_type=args.handler_type,
+        required_capability=args.required_capability)
 
 s.save()
 

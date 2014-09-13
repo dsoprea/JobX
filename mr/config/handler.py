@@ -7,6 +7,7 @@ SOURCE_META_FILENAME_SUFFIX = '.py.meta'
 REQUIRED_META_FIELDS = [
     'argument_spec',
     'handler_type',
+    'required_capability',
 ]
 
 CODE_EXTENSION_MAP = {
