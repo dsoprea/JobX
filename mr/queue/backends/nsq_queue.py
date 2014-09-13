@@ -42,17 +42,11 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
             'capability_name': capability_name,
         }
 
-        _logger.debug("Message has class of [%s] and capability of [%s].", 
-                      capability_name.upper())
+        _logger.debug("Message has class of [%s] and a required-capability of "
+                      "[%s].", class_, capability_name)
 
         return (class_, context)
-# TODO(dustin): We'll need to dynamically route here from the default message 
-#               handler for those messages that used an extended topic-name to 
-#               route to this host for a particular capability.
-#
-#               This applies to both handle_map and handle_reduction, whose 
-#               user-defined handler may both require specific capabilities or 
-#               licenses.
+
     def handle_map(self, connection, message, context):
         """We are receiving a map-reduce message (that's all we'll receive). 
         Forward it to standard map-reduce message processing.
