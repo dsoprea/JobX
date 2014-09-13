@@ -15,17 +15,27 @@ import atexit
 import mr.config
 import mr.config.log
 import mr.config.queue
+import mr.config.ui
 import mr.views.job
 import mr.views.index
+import mr.views.ui.job
 import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.models.kv.workflow
 
-app = flask.Flask(__name__)
+app = flask.Flask(__name__, template_folder=mr.config.TEMPLATE_PATH)
 app.debug = mr.config.IS_DEBUG
 
 app.register_blueprint(mr.views.index.index_bp)
 app.register_blueprint(mr.views.job.job_bp)
+
+# TODO(dustin): Put the UI views into a sub-app.
+
+app.register_blueprint(mr.views.ui.job.ui_job_bp)
+
+@app.context_processor
+def _inject_global_context():
+    return mr.config.ui.TEMPLATE_GLOBALS
 
 def _init_queue(workflow_names):
     """Start the queue. This is the circulatory system."""
