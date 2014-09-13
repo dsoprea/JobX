@@ -56,9 +56,15 @@ class _QueuePusher(object):
 # TODO(dustin): We might increment a count of total steps processed on the 
 #               request.
 
+        if message_parameters.handler.required_capability != \
+                mr.constants.REQUIRED_CAP_NONE:
+            capability_name = message_parameters.handler.required_capability
+        else:
+            capability_name = mr.constants.CAP_GENERAL
+
         replacements = {
             'workflow_name': message_parameters.workflow.workflow_name,
-            'capability_name': message_parameters.handler.required_capability,
+            'capability_name': capability_name,
         }
 
         topic = mr.config.queue.TOPIC_NAME_MAP_TEMPLATE % replacements
@@ -136,11 +142,15 @@ class _QueuePusher(object):
                       reduce_parameters.invocation.invocation_id, 
                       reduce_step.step_name)
 
-        pprint.pprint(reduce_parameters)
+        if reduce_handler.required_capability != \
+                mr.constants.REQUIRED_CAP_NONE:
+            capability_name = reduce_handler.required_capability
+        else:
+            capability_name = mr.constants.CAP_GENERAL
 
         replacements = {
             'workflow_name': workflow.workflow_name,
-            'capability_name': reduce_handler.required_capability,
+            'capability_name': capability_name,
         }
 
         topic = mr.config.queue.TOPIC_NAME_REDUCE_TEMPLATE % replacements

@@ -10,6 +10,7 @@ import pprint
 import select
 
 import mr.config.log
+import mr.constants
 import mr.models.kv.workflow
 import mr.models.kv.handler
 
@@ -24,7 +25,7 @@ parser.add_argument('source_type', help='Source language')
 parser.add_argument('handler_type', help='Handler type')
 
 parser.add_argument('-r', '--required-capability', 
-                    default='all', 
+                    default=mr.constants.REQUIRED_CAP_NONE, 
                     help='Handler type')
 
 parser.add_argument('-a', '--argument', 

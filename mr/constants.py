@@ -19,3 +19,8 @@ D_MAP = 'map'
 D_REDUCE = 'reduce'
 
 DIRECTIONS = (D_MAP, D_REDUCE)
+
+# Capabilities
+
+CAP_GENERAL = 'general'
+REQUIRED_CAP_NONE = 'none'

@@ -1,6 +1,8 @@
 import os
 import logging
 
+import mr.constants
+
 _logger = logging.getLogger(__name__)
 
 _USE_FAKE_QUEUE = bool(int(os.environ.get('MR_USE_FAKE_QUEUE', '0')))
@@ -28,4 +30,8 @@ CONSUMER_ENABLED = bool(int(os.environ.get('MR_CONSUME', '1')))
 
 DISPATCH_CLEANUP_INTERVAL_S = 1
 
-LOCAL_SYSTEM_CAPABILITIES = os.environ.get('MR_SYSTEM_CAPABILITIES', 'all').split(',')
+_CAPABILITIES = os.environ.get(
+                    'MR_SYSTEM_CAPABILITIES', 
+                    mr.constants.CAP_GENERAL)
+
+LOCAL_SYSTEM_CAPABILITIES = _CAPABILITIES.split(',')
