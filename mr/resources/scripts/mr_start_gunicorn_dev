@@ -10,17 +10,11 @@ root_path = os.path.abspath(os.path.join(os.path.dirname(mr.__file__), '..'))
 
 os.chdir(root_path)
 
-os.environ['DEBUG'] = '1'
-os.environ['MR_WORKFLOW_NAMES'] = 'dev'
-#MR_USE_FAKE_QUEUE=1 \
-#MR_FAKE_QUEUE_SPOOL_PATH=$CWD/../fake_spool_path \
-#MR_MULTITHREADED=0 \
-
 import subprocess
 
 cmd = ['gunicorn', '-c', 'mr/resources/data/gunicorn_conf_dev.py', 'mr.app.main:app']
 
-p = subprocess.Popen(cmd, env=os.environ.copy())
+p = subprocess.Popen(cmd)
 r = p.wait()
 if r != 0:
     raise EnvironmentError("Gunicorn launch failed.")
