@@ -8,6 +8,7 @@ argument_spec:
         type: list
 
 handler_type: mapper
+required_capability: none
 """
 
 import random

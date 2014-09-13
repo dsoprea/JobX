@@ -8,6 +8,7 @@ argument_spec:
         type: list
 
 handler_type: reducer
+required_capability: none
 """
 
 print("handler2 results: %s" % (results,))
