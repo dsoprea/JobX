@@ -17,6 +17,7 @@ import etcd.exceptions
 
 import mr.config
 import mr.config.queue
+import mr.config.result
 import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.handler
@@ -28,6 +29,7 @@ import mr.workflow_manager
 import mr.shared_types
 import mr.constants
 import mr.handlers.scope
+import mr.utility
 
 _logger = logging.getLogger(__name__)
 
@@ -820,6 +822,11 @@ class _RequestReceiver(object):
     def __init__(self):
         self.__q = mr.queue.queue_manager.get_queue()
 
+        result_writer_cls = mr.utility.load_cls_from_string(
+                                mr.config.result.RESULT_WRITER_FQ_CLASS)
+
+        self.__result_writer = result_writer_cls()
+
     def __push_request(self, message_parameters):
         pusher = _get_pusher()
         pusher.queue_initial_map_step_from_parameters(message_parameters)
@@ -842,18 +849,17 @@ class _RequestReceiver(object):
                 message_parameters.invocation, 
                 mr.models.kv.queues.dataset.DT_POST_REDUCE)
 
-        results = list(dq.list_data())
-
-        _logger.debug("Retrieved result for request:\n%s", results)
-
-        result_pair_gen = (d['p'] for d in results)
+        result_pair_gen = (d['p'] for d in dq.list_data())
 
         if mr.config.IS_DEBUG is True:
             result_pair_gen = list(result_pair_gen)
             _logger.debug("Result to return for request:\n%s", 
                           pprint.pformat(result_pair_gen))
 
-        return (request.request_id, result_pair_gen)
+        result_tokens = self.__result_writer.get_response_tokens(
+                            result_pair_gen)
+
+        return (request.request_id, result_tokens)
 
     def process_request(self, message_parameters):
         self.__push_request(message_parameters)

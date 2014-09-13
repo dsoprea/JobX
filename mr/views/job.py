@@ -105,11 +105,11 @@ def job_submit(workflow_name, job_name):
                             handler=handler)
 
     rr = mr.job_engine.get_request_receiver()
-    (request_id, result_pair_gen) = rr.process_request(message_parameters)
+    (request_id, result_tokens) = rr.process_request(message_parameters)
 
     result = {
         'request_id': request_id,
-        'result': list(result_pair_gen)
+        'result': result_tokens,
     }
 
     raw_response = flask.jsonify(result)

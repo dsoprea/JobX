@@ -28,7 +28,7 @@ sys.stderr.write("Request ID: [%s]\n\n" %
                  (r.headers['X-MR-REQUEST-ID'],))
 
 raw = r.json()
-result = dict(raw['result'])
+result = dict(raw['result']['pairs'])
 
 # Note that we print using Python native printer rather than printing a JSON 
 # structure (which we prefer because it's slighter lighter) because JSON will 
