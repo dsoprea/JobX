@@ -857,6 +857,7 @@ class _RequestReceiver(object):
                           pprint.pformat(result_pair_gen))
 
         result_tokens = self.__result_writer.get_response_tokens(
+                            request.request_id, 
                             result_pair_gen)
 
         return (request.request_id, result_tokens)

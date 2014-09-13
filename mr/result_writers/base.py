@@ -2,5 +2,5 @@
 
 
 class BaseResultWriter(object):
-    def get_response_tokens(self, result_pair_gen):
+    def get_response_tokens(self, request_id, result_pair_gen):
         raise NotImplementedError()
