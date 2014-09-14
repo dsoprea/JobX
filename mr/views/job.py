@@ -7,7 +7,6 @@ import mr.models.kv.step
 import mr.models.kv.request
 import mr.models.kv.handler
 import mr.models.kv.invocation
-import mr.models.kv.trees.invocations
 import mr.workflow_manager
 import mr.job_engine
 import mr.shared_types
@@ -76,12 +75,6 @@ def job_submit(workflow_name, job_name):
         }
 
         dq.add(data)
-
-    it = mr.models.kv.trees.invocations.InvocationsTree(
-            workflow, 
-            invocation)
-
-    it.create()
 
     request = mr.models.kv.request.Request(
                 request_id=None,

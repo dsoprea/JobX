@@ -22,7 +22,7 @@ import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.handler
 import mr.models.kv.invocation
-import mr.models.kv.trees.invocations
+import mr.models.kv.trees.relationships
 import mr.models.kv.queues.dataset
 import mr.queue.queue_manager
 import mr.workflow_manager
@@ -111,23 +111,6 @@ class _QueuePusher(object):
 
         reduce_invocation.save()
 
-        # Create a tracking tree for this new invocation.
-
-        it = mr.models.kv.trees.invocations.InvocationsTree(
-                workflow, 
-                reduce_invocation)
-
-        it.create()
-
-        # Add an invocation to bind this invocation to our true parent (the 
-        # last actual invocation, not the one we're being given).
-
-        parent_tree = mr.models.kv.trees.invocations.InvocationsTree(
-                        workflow, 
-                        message_parameters.invocation)
-
-        parent_tree.add_entity(reduce_invocation)
-
         # Queue the reduction.
 
         reduce_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
@@ -182,9 +165,9 @@ class _StepProcessor(object):
         workflow = original_parameters.workflow
         job = original_parameters.job
         step = original_parameters.step
-        invocation = original_parameters.invocation
+        parent_map_invocation = original_parameters.invocation
 
-        assert invocation.invocation_id is not None
+        assert parent_map_invocation.invocation_id is not None
 
         next_handler = mr.models.kv.handler.get(
                         workflow, 
@@ -194,7 +177,8 @@ class _StepProcessor(object):
         map_invocation = mr.models.kv.invocation.Invocation(
                                 invocation_id=None,
                                 workflow_name=workflow.workflow_name,
-                                parent_invocation_id=invocation.invocation_id,
+                                parent_invocation_id=\
+                                    parent_map_invocation.invocation_id,
                                 step_name=next_step.step_name,
                                 direction=mr.constants.D_MAP)
 
@@ -213,21 +197,14 @@ class _StepProcessor(object):
 
         dq.add(data)
 
-        # Create a tracking tree for this new invocation.
+        # Track the relationship.
 
-        it = mr.models.kv.trees.invocations.InvocationsTree(
+        rt = mr.models.kv.trees.relationships.RelationshipsTree(
                 workflow, 
-                map_invocation)
+                parent_map_invocation,
+                mr.models.kv.trees.relationships.RT_MAPPED)
 
-        it.create()
-
-        # Add an association to bind this invocation to our parent's.
-
-        parent_tree = mr.models.kv.trees.invocations.InvocationsTree(
-                        workflow, 
-                        invocation)
-
-        parent_tree.add_entity(map_invocation)
+        rt.add_entity(map_invocation)
 
         # Queue the mapping.
 
@@ -611,11 +588,30 @@ class _StepProcessor(object):
             unavoidable of multidimensional-mappings).
             """
 
-            parent_tree = mr.models.kv.trees.invocations.InvocationsTree(
+            parent_tree = mr.models.kv.trees.relationships.RelationshipsTree(
                             workflow, 
-                            map_invocation)
+                            map_invocation,
+                            mr.models.kv.trees.relationships.RT_MAPPED)
 
             for mapped_invocation in parent_tree.list_entities():
+                # A relationship of each of the datasets being reduced to the 
+                # invocation that we're pushing it to.
+
+                rt = mr.models.kv.trees.relationships.RelationshipsTree(
+                        workflow, 
+                        mapped_invocation,
+                        mr.models.kv.trees.relationships.RT_REDUCED)
+
+                # Store the reduction's invocation ID.
+                
+                data = {
+                    'ri': message_parameters.invocation.invocation_id,
+                }
+                
+                rt.add_entity(map_invocation, data=data)
+
+                # Yield through the dataset.
+
                 dq = mr.models.kv.queues.dataset.DatasetQueue(
                         workflow, 
                         mapped_invocation,
@@ -676,8 +672,7 @@ class _StepProcessor(object):
                                        map_invocation, workflow, request):
         """Reduce over a mapping invocation that mapped to downstream steps."""
 
-        # Call the handler with a generator of all of the results to be 
-        # reduced.
+        # Establish the dataset that was rendered by the one map.
 
         dq = mr.models.kv.queues.dataset.DatasetQueue(
                 workflow, 
@@ -701,11 +696,30 @@ class _StepProcessor(object):
 
             print('')
 
+        # A relationship of us *to* us to indicate that the mapping produced 
+        # data directly, and that data was reduced directly.
+
+        rt = mr.models.kv.trees.relationships.RelationshipsTree(
+                workflow, 
+                map_invocation,
+                mr.models.kv.trees.relationships.RT_REDUCED)
+
+        # Store the reduction's invocation ID.
+
+        data = {
+            'ri': message_parameters.invocation.invocation_id,
+        }
+        
+        rt.add_entity(map_invocation, data=data)
+
         results_gen = ((data['k'], data['vl']) for data in results_gen)
 
         handler_arguments = {
             'results': results_gen,
         }
+
+        # Call the handler with a generator of all of the results to be 
+        # reduced.
 
         reduce_result_gen = self.__call_handler(
                                 workflow,
