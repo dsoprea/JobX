@@ -68,7 +68,7 @@ def _add_map(dot, invocation, parent_invocation=None):
 
         dot.edge(parent_node_id, node_id, label=label)
 
-def _add_reduce(dot, reduce_invocation, map_invocation):
+def _add_reduce(dot, reduce_invocation, map_invocation, is_loop_to_self):
     map_node_id = _get_inv_node_id(map_invocation)
     reduce_node_id = _get_inv_node_id(reduce_invocation)
     step = mr.models.kv.step.get(workflow, reduce_invocation.step_name)
@@ -81,23 +81,34 @@ def _add_reduce(dot, reduce_invocation, map_invocation):
 
     dot.node(reduce_node_id, label)
 
-    dot.edge(map_node_id, reduce_node_id, label="reduced by")
+    # If a mapper returns a dataset, it'll be reduced and stored back on 
+    # itself.
+    if is_loop_to_self is True:
+        label = "data reduced by"
+    
+    # Else, the mapper mapped to downstream steps.
+    else:
+        label = "step reduced by"
+
+    dot.edge(map_node_id, reduce_node_id, label=label)
 
 def _add_invocations(dot, workflow, request):
-    for (child_invocation, argument_data, post_combine_data, post_reduce_data, 
-         parent_invocation) \
+    for child_info, is_loop_to_self \
         in mr.trace.invocation_graph_with_data_gen(workflow, request):
-#            print("CHILD=[%s] PARENT=[%s]" % 
-#                  (child_invocation.invocation_id, 
-#                   parent_invocation.invocation_id \
-#                    if parent_invocation \
-#                    else None))
-#            continue
+            (child_invocation, argument_data, post_combine_data, post_reduce_data, 
+             parent_invocation) = child_info
 
             if child_invocation.direction == mr.constants.D_MAP:
-                _add_map(dot, child_invocation, parent_invocation=parent_invocation)
+                _add_map(
+                    dot, 
+                    child_invocation, 
+                    parent_invocation=parent_invocation)
             elif child_invocation.direction == mr.constants.D_REDUCE:
-                _add_reduce(dot, child_invocation, parent_invocation)
+                _add_reduce(
+                    dot, 
+                    child_invocation, 
+                    parent_invocation, 
+                    is_loop_to_self)
             else:
                 raise ValueError("Invocation [%s] direction [%s] invalid." % 
                                  (child_invocation.invocation_id, 

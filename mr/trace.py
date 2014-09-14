@@ -60,7 +60,7 @@ def invocation_graph_gen(workflow, request):
 
     root_invocation = get_invocation(request.invocation_id)
 
-    yield (root_invocation, None)
+    yield (root_invocation, None, False)
 
     q = Queue.Queue()
     q.put(root_invocation)
@@ -89,7 +89,7 @@ def invocation_graph_gen(workflow, request):
             entities = it.list_entities()
 
             for to_invocation in entities:
-                yield (to_invocation, from_invocation)
+                yield (to_invocation, from_invocation, False)
 
 #                membership = (to_invocation.invocation_id, 'mapped')
                 membership = (to_invocation.invocation_id)
@@ -112,10 +112,13 @@ def invocation_graph_gen(workflow, request):
             entities = it.list_entities_and_data()
 
             for to_invocation, data in entities:
+                is_loop_to_self = from_invocation.invocation_id == \
+                                    to_invocation.invocation_id
+
                 reduce_invocation_id = data['ri']
                 reduce_invocation = get_invocation(reduce_invocation_id)
 
-                yield (reduce_invocation, from_invocation)
+                yield (reduce_invocation, from_invocation, is_loop_to_self)
 
                 reducer_parent_relation_member = \
                     (to_invocation.invocation_id, 
@@ -133,7 +136,7 @@ def invocation_graph_gen(workflow, request):
                         visited_s.add(membership)
 
                     reducer_to_parent_relations_s.add(reducer_parent_relation_member)
-                    yield (to_invocation, reduce_invocation)
+                    yield (to_invocation, reduce_invocation, is_loop_to_self)
         except KeyError:
             pass
         else:
@@ -151,11 +154,11 @@ def invocation_graph_with_data_gen(workflow, request):
     reduce data.
     """
 
-    for (child_invocation, parent_invocation) \
+    for (child_invocation, parent_invocation, is_loop_to_self) \
         in invocation_graph_gen(workflow, request):
             child_info = _get_child_info(
                             workflow, 
                             child_invocation, 
                             parent_invocation)
 
-            yield child_info
+            yield (child_info, is_loop_to_self)
