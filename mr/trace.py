@@ -1,12 +1,19 @@
+import logging
 import Queue
-import pprint
 
+import graphviz
+
+import mr.config.trace
 import mr.models.kv.request
 import mr.models.kv.workflow
 import mr.models.kv.invocation
 import mr.models.kv.trees.relationships
 import mr.models.kv.queues.dataset
+import mr.models.kv.job
+import mr.models.kv.step
 import mr.constants
+
+_logger = logging.getLogger(__name__)
 
 def _get_child_info(workflow, child_invocation, parent_invocation=None):
     # Read arguments.
@@ -162,3 +169,129 @@ def invocation_graph_with_data_gen(workflow, request):
                             parent_invocation)
 
             yield (child_info, is_loop_to_self)
+
+
+class InvocationGraph(object):
+    def __init__(self, request, workflow):
+        self.__request = request
+        self.__workflow = workflow
+
+        self.__root_invocation = mr.models.kv.invocation.get(workflow, request.invocation_id)
+        self.__job = mr.models.kv.job.get(workflow, request.job_name)
+
+    def __escape(self, text):
+        return text.replace("\\", "\\\\").replace('"', '\\"')
+
+    def __get_inv_id(self, invocation):
+        return invocation.invocation_id[:10]
+
+    def __get_inv_node_id(self, invocation):
+        return 'I' + self.__get_inv_id(invocation)
+
+    def __add_map(self, dot, invocation, parent_invocation=None):
+        node_id = self.__get_inv_node_id(invocation)
+        step = mr.models.kv.step.get(self.__workflow, invocation.step_name)
+
+        label = 'S "' + self.__escape(step.step_name) + '"' + ' ' +\
+                'H "' + self.__escape(step.map_handler_name) + '"' + ' ' +\
+                'MI ' + self.__get_inv_id(invocation)
+
+        dot.node(node_id, label)
+
+        if parent_invocation is not None:
+            parent_node_id = self.__get_inv_node_id(parent_invocation)
+            
+            if parent_invocation.direction == mr.constants.D_REDUCE:
+                label = 'stored to'
+            elif parent_invocation.direction == mr.constants.D_MAP:
+                label = 'mapped to'
+            else:
+                raise ValueError("Invalid 'direction' value [%s] for "
+                                 "invocation: [%s]" % 
+                                 (parent_invocation.direction, 
+                                  parent_invocation))
+
+            dot.edge(parent_node_id, node_id, label=label)
+
+    def __add_reduce(self, dot, reduce_invocation, map_invocation, 
+                     is_loop_to_self):
+        map_node_id = self.__get_inv_node_id(map_invocation)
+        reduce_node_id = self.__get_inv_node_id(reduce_invocation)
+        step = mr.models.kv.step.get(self.__workflow, reduce_invocation.step_name)
+
+        label = 'S "' + self.__escape(step.step_name) + '"' + ' ' +\
+                'H "' + self.__escape(step.reduce_handler_name) + '"' + ' ' +\
+                'RI ' + self.__get_inv_id(reduce_invocation)
+
+        dot.node(reduce_node_id, label)
+
+        # If a mapper returns a dataset, it'll be reduced and stored back on 
+        # itself.
+        if is_loop_to_self is True:
+            label = "data reduced by"
+        
+        # Else, the mapper mapped to downstream steps.
+        else:
+            label = "step reduced by"
+
+        dot.edge(map_node_id, reduce_node_id, label=label)
+
+    def __add_invocations(self, dot):
+        for child_info, is_loop_to_self \
+            in mr.trace.invocation_graph_with_data_gen(
+                    self.__workflow, 
+                    self.__request):
+                (child_invocation, argument_data, post_combine_data, 
+                 post_reduce_data, parent_invocation) = child_info
+
+                if child_invocation.direction == mr.constants.D_MAP:
+                    self.__add_map(
+                            dot, 
+                            child_invocation, 
+                            parent_invocation=parent_invocation)
+                elif child_invocation.direction == mr.constants.D_REDUCE:
+                    self.__add_reduce(
+                        dot, 
+                        child_invocation, 
+                        parent_invocation, 
+                        is_loop_to_self)
+                else:
+                    raise ValueError("Invocation [%s] direction [%s] "
+                                     "invalid." % 
+                                     (child_invocation.invocation_id, 
+                                      child_invocation.direction))
+
+                # TODO(dustin): See if we can represent data.
+                # TODO(dustin): See if we can also annotate where the data is stored for each operation (dotted-line edges?)
+                # TODO(dustin): We have to represent errors.
+
+#            if child_invocation.error is not None:
+#                print("  Child invocation error:")
+#                print('')
+#                print('  %s' % (child_invocation.error,))
+#                print('')
+
+    def draw_graph(self):
+        replacements = {
+            'request_id': self.__request.request_id,
+        }
+
+        comment = mr.config.trace.GRAPH_COMMENT_TEMPLATE % replacements
+        dot = graphviz.Digraph(comment=comment)
+
+        dot.node('Q', 'Request (' + self.__request.request_id[:10] + ')')
+        dot.node('W', 'Workflow (' + self.__workflow.workflow_name + ')')
+        dot.node('J', 'Job (' + self.__job.job_name + ')')
+
+        dot.edge('Q', 'W', label="resolve workflow")
+        dot.edge('W', 'J', label="resolve job from request in workflow")
+
+        self.__add_invocations(dot)
+
+        root_map_inv_id = self.__get_inv_node_id(self.__root_invocation)
+        dot.edge('J', root_map_inv_id)
+
+        return dot
+
+    def get_source(self, dot):
+        return dot.source
