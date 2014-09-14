@@ -49,8 +49,9 @@ def _add_map(dot, invocation, parent_invocation=None):
 #    print("MAP [%s] [%s]" % (str(invocation), str(parent_invocation)))
 #    print("(Adding node [%s])" % (node_id,))
 
-    label = '"' + _escape(step.map_handler_name) + '"' + ' ' + \
-            '(Map Inv ' + _get_inv_id(invocation) + ')'
+    label = 'S "' + _escape(step.step_name) + '"' + ' ' +\
+            'H "' + _escape(step.map_handler_name) + '"' + ' ' +\
+            'MI ' + _get_inv_id(invocation)
 
     dot.node(node_id, label)
 
@@ -76,8 +77,9 @@ def _add_reduce(dot, reduce_invocation, map_invocation, is_loop_to_self):
 #    print("REDUCE [%s] [%s]" % (str(reduce_invocation), str(map_invocation)))
 #    print("(Adding node [%s])" % (node_id,))
 
-    label = '"' + _escape(step.reduce_handler_name) + '"' + ' ' + \
-            '(Reduce Inv ' + _get_inv_id(map_invocation) + ')'
+    label = 'S "' + _escape(step.step_name) + '"' + ' ' +\
+            'H "' + _escape(step.reduce_handler_name) + '"' + ' ' +\
+            'RI ' + _get_inv_id(reduce_invocation)
 
     dot.node(reduce_node_id, label)
 
