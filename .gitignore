@@ -10,3 +10,5 @@
 /*prj
 /mr/resources/fake_spool_path/*
 .DS_Store
+/mr/resources/scripts/*.dot
+/mr/resources/scripts/*.png
