@@ -118,7 +118,7 @@ class Tree(mr.models.kv.common.CommonKv):
     def list_entities_and_data(self):
         identity = self.__get_root_identity()
         return ((self.get_child_model_entity(name), 
-                 encoded_data) 
+                 mr.config.kv.DECODER(encoded_data)) 
                 for name, encoded_data 
                 in _dl.list(identity))
 
