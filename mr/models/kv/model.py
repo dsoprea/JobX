@@ -73,6 +73,35 @@ class Model(mr.models.kv.common.CommonKv):
 
         self.__load_from_data(data, is_stored=is_stored)
 
+# TODO(dustin): We wrote the membership-comparison functions, but, as they
+#               would require that we hash based on the current contents of the
+#               object, it might be very expensive for memberships checks. So,
+#               for now we rely on the developer using their known of an entity
+#               to use the key-value or something, and not relying on using the
+#               whole object.
+#
+#    def __hash__(self):
+#        cls = self.__class__
+#        return hash(getattr(self, cls.key_field))
+#
+#    def __eq__(self, o):
+#        cls = self.__class__
+#        if o is None:
+#            return False
+#
+#        if cls != o.__class__:
+#            return False
+#
+#        key_field = cls.key_field
+#
+#        if getattr(o, key_field) != getattr(self, key_field):
+#            return False
+#
+#        return True
+#
+#    def __ne__(self, o):
+#        return not (self == o)
+
     def __load_from_data(self, data, is_stored=False):
         cls = self.__class__
 
