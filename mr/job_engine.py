@@ -863,6 +863,24 @@ class _RequestReceiver(object):
                 message_parameters.invocation, 
                 mr.models.kv.queues.dataset.DT_POST_REDUCE)
 
+# TODO(dustin): We're still this, sometimes.
+#
+#  File "/Users/dustin/development/python/mapreduce/mr/job_engine.py", line 883, in process_request
+#    r = self.__block_for_result(message_parameters)
+#  File "/Users/dustin/development/python/mapreduce/mr/job_engine.py", line 871, in __block_for_result
+#    result_pair_gen = list(result_pair_gen)
+#  File "/Users/dustin/development/python/mapreduce/mr/job_engine.py", line 868, in <genexpr>
+#    result_pair_gen = (d['p'] for d in dq.list_data())
+#  File "/Users/dustin/development/python/mapreduce/mr/models/kv/queues/queue.py", line 86, in list_data
+#    for encoded_data in super(Queue, self).list_data():
+#  File "/Users/dustin/development/python/mapreduce/mr/models/kv/data_layer.py", line 151, in <genexpr>
+#    return (d for (k, d) in self.__dl.list(self.__root_identity))
+#  File "/Users/dustin/development/python/mapreduce/mr/models/kv/data_layer.py", line 74, in list
+#    response = _etcd.node.get(root_key)
+#  File "/Users/dustin/development/python/etcd/etcd/node_ops.py", line 34, in op_wrapper
+#    raise r
+#KeyError: '/queues/dev/dataset/20b1b037e73bac377ad61e561409a4e53db1096d/post_reduce'
+
         result_pair_gen = (d['p'] for d in dq.list_data())
 
         if mr.config.IS_DEBUG is True:

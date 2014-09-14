@@ -13,6 +13,7 @@ import mr.trace
 import mr.constants
 import mr.models.kv.job
 import mr.models.kv.invocation
+import mr.models.kv.step
 
 _OUTPUT_FILEPATH_TEMPLATE = 'request-%(request_id)s.dot'
 _GRAPH_COMMENT_TEMPLATE = 'Request %(request_id)s'
@@ -32,6 +33,9 @@ root_invocation = mr.models.kv.invocation.get(workflow, request.invocation_id)
 
 job = mr.models.kv.job.get(workflow, request.job_name)
 
+def _escape(text):
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
 def _get_inv_id(invocation):
     return invocation.invocation_id[:10]
 
@@ -40,24 +44,42 @@ def _get_inv_node_id(invocation):
 
 def _add_map(dot, invocation, parent_invocation=None):
     node_id = _get_inv_node_id(invocation)
+    step = mr.models.kv.step.get(workflow, invocation.step_name)
 
 #    print("MAP [%s] [%s]" % (str(invocation), str(parent_invocation)))
 #    print("(Adding node [%s])" % (node_id,))
 
-    dot.node(node_id, 'Map (Inv ' + _get_inv_id(invocation) + ')')
+    label = '"' + _escape(step.map_handler_name) + '"' + ' ' + \
+            '(Map Inv ' + _get_inv_id(invocation) + ')'
+
+    dot.node(node_id, label)
 
     if parent_invocation is not None:
         parent_node_id = _get_inv_node_id(parent_invocation)
-        dot.edge(parent_node_id, node_id, label="mapped to")
+        
+        if parent_invocation.direction == mr.constants.D_REDUCE:
+            label = 'stored to'
+        elif parent_invocation.direction == mr.constants.D_MAP:
+            label = 'mapped to'
+        else:
+            raise ValueError("Invalid 'direction' value [%s] for invocation: "
+                             "[%s]" % 
+                             (parent_invocation.direction, parent_invocation))
+
+        dot.edge(parent_node_id, node_id, label=label)
 
 def _add_reduce(dot, reduce_invocation, map_invocation):
     map_node_id = _get_inv_node_id(map_invocation)
     reduce_node_id = _get_inv_node_id(reduce_invocation)
+    step = mr.models.kv.step.get(workflow, reduce_invocation.step_name)
 
 #    print("REDUCE [%s] [%s]" % (str(reduce_invocation), str(map_invocation)))
 #    print("(Adding node [%s])" % (node_id,))
 
-    dot.node(reduce_node_id, 'Reduce (Inv ' + _get_inv_id(map_invocation) + ')')
+    label = '"' + _escape(step.reduce_handler_name) + '"' + ' ' + \
+            '(Reduce Inv ' + _get_inv_id(map_invocation) + ')'
+
+    dot.node(reduce_node_id, label)
 
     dot.edge(map_node_id, reduce_node_id, label="reduced by")
 
@@ -65,6 +87,13 @@ def _add_invocations(dot, workflow, request):
     for (child_invocation, argument_data, post_combine_data, post_reduce_data, 
          parent_invocation) \
         in mr.trace.invocation_graph_with_data_gen(workflow, request):
+#            print("CHILD=[%s] PARENT=[%s]" % 
+#                  (child_invocation.invocation_id, 
+#                   parent_invocation.invocation_id \
+#                    if parent_invocation \
+#                    else None))
+#            continue
+
             if child_invocation.direction == mr.constants.D_MAP:
                 _add_map(dot, child_invocation, parent_invocation=parent_invocation)
             elif child_invocation.direction == mr.constants.D_REDUCE:

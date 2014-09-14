@@ -65,8 +65,10 @@ def invocation_graph_gen(workflow, request):
     q = Queue.Queue()
     q.put(root_invocation)
 
-    membership = (root_invocation.invocation_id, 'mapped')
+#    membership = (root_invocation.invocation_id, 'mapped')
+    membership = (root_invocation.invocation_id)
     visited_s = set([membership])
+    reducer_to_parent_relations_s = set()
 
     while 1:
         try:
@@ -89,7 +91,8 @@ def invocation_graph_gen(workflow, request):
             for to_invocation in entities:
                 yield (to_invocation, from_invocation)
 
-                membership = (to_invocation.invocation_id, 'mapped')
+#                membership = (to_invocation.invocation_id, 'mapped')
+                membership = (to_invocation.invocation_id)
                 if membership not in visited_s:
                     q.put(to_invocation)
                     visited_s.add(membership)
@@ -110,18 +113,27 @@ def invocation_graph_gen(workflow, request):
 
             for to_invocation, data in entities:
                 reduce_invocation_id = data['ri']
-                reduce_invocation = mr.models.kv.invocation.get(
-                                        workflow, 
-                                        reduce_invocation_id)
+                reduce_invocation = get_invocation(reduce_invocation_id)
 
                 yield (reduce_invocation, from_invocation)
 
-                membership = (to_invocation.invocation_id, 'reduced')
-                if membership not in visited_s:
-                    q.put(to_invocation)
-                    visited_s.add(membership)
+                reducer_parent_relation_member = \
+                    (to_invocation.invocation_id, 
+                     reduce_invocation.invocation_id)
 
-                yield (to_invocation, reduce_invocation)
+                # Make sure that we only report one of the connections from the 
+                # reducer to the original mapping (we have a list of all of the 
+                # constituent datasets).
+                if reducer_parent_relation_member not in \
+                    reducer_to_parent_relations_s:
+#                    membership = (to_invocation.invocation_id, 'reduced')
+                    membership = (to_invocation.invocation_id)
+                    if membership not in visited_s:
+                        q.put(to_invocation)
+                        visited_s.add(membership)
+
+                    reducer_to_parent_relations_s.add(reducer_parent_relation_member)
+                    yield (to_invocation, reduce_invocation)
         except KeyError:
             pass
         else:
