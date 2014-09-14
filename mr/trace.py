@@ -3,7 +3,8 @@ import pprint
 
 import mr.models.kv.request
 import mr.models.kv.workflow
-import mr.models.kv.trees.invocations
+import mr.models.kv.invocation
+import mr.models.kv.trees.relationships
 import mr.models.kv.queues.dataset
 import mr.constants
 
@@ -59,34 +60,90 @@ def invocation_graph_gen(workflow, request):
 
     root_invocation = get_invocation(request.invocation_id)
 
-    child_info = _get_child_info(
-                    workflow, 
-                    root_invocation, 
-                    parent_invocation=None)
-
-    yield child_info
+    yield (root_invocation, None)
 
     q = Queue.Queue()
     q.put(root_invocation)
 
+    membership = (root_invocation.invocation_id, 'mapped')
+    visited_s = set([membership])
+
     while 1:
         try:
-            parent_invocation = q.get_nowait()
+            from_invocation = q.get_nowait()
         except Queue.Empty:
             break
 
-        it = mr.models.kv.trees.invocations.InvocationsTree(
-                workflow, 
-                parent_invocation)
+        was_found = False
 
-        entities = list(it.list_entities())
+        # Attempt to find map relationships from this invocation.
 
-        for child_invocation in entities:
+        try:
+            it = mr.models.kv.trees.relationships.RelationshipsTree(
+                    workflow, 
+                    from_invocation,
+                    mr.models.kv.trees.relationships.RT_MAPPED)
+
+            entities = it.list_entities()
+
+            for to_invocation in entities:
+                yield (to_invocation, from_invocation)
+
+                membership = (to_invocation.invocation_id, 'mapped')
+                if membership not in visited_s:
+                    q.put(to_invocation)
+                    visited_s.add(membership)
+        except KeyError:
+            pass
+        else:
+            was_found = True
+
+        # Attempt to find reduce relationships from this invocation.
+
+        try:
+            it = mr.models.kv.trees.relationships.RelationshipsTree(
+                    workflow, 
+                    from_invocation,
+                    mr.models.kv.trees.relationships.RT_REDUCED)
+
+            entities = it.list_entities_and_data()
+
+            for to_invocation, data in entities:
+                reduce_invocation_id = data['ri']
+                reduce_invocation = mr.models.kv.invocation.get(
+                                        workflow, 
+                                        reduce_invocation_id)
+
+                yield (reduce_invocation, from_invocation)
+
+                membership = (to_invocation.invocation_id, 'reduced')
+                if membership not in visited_s:
+                    q.put(to_invocation)
+                    visited_s.add(membership)
+
+                yield (to_invocation, reduce_invocation)
+        except KeyError:
+            pass
+        else:
+            was_found = True
+
+        if was_found is False:
+            raise KeyError("Could not find relationships of any kind for "
+                           "invocation [%s]." % 
+                           (from_invocation.invocation_id,))
+
+
+def invocation_graph_with_data_gen(workflow, request):
+    """Return a generator that presents every a (parent, child) tuple of 
+    invocation relationships, as well as the associated argument, map, and 
+    reduce data.
+    """
+
+    for (child_invocation, parent_invocation) \
+        in invocation_graph_gen(workflow, request):
             child_info = _get_child_info(
                             workflow, 
                             child_invocation, 
                             parent_invocation)
 
             yield child_info
-
-            q.put(child_invocation)

@@ -41,7 +41,7 @@ print('')
 
 for (child_invocation, argument_data, post_combine_data, post_reduce_data, 
      parent_invocation) \
-    in mr.trace.invocation_graph_gen(workflow, request):
+    in mr.trace.invocation_graph_with_data_gen(workflow, request):
         if child_invocation.direction == mr.constants.D_MAP:
             action_phrase = 'has MAPPED to'
         elif child_invocation.direction == mr.constants.D_REDUCE:
