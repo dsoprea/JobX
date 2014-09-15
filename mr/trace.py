@@ -120,6 +120,13 @@ def invocation_graph_gen(workflow, request):
             entities = it.list_entities_and_data()
 
             for to_invocation, data in entities:
+                # If this is a reduction over a dataset that was yielded from a 
+                # mapping (which stores data to itself as opposed to a set of 
+                # datasets from downstream mappings being reduced and stored 
+                # into the parent), we'll first yield the mapping->reduce 
+                # relationship, and then the reduce->mapping relationship. The 
+                # consumer of this generator won't know that it's a loop. So, 
+                # we tell them.
                 is_loop_to_self = from_invocation.invocation_id == \
                                     to_invocation.invocation_id
 
@@ -173,9 +180,9 @@ def invocation_graph_with_data_gen(workflow, request):
 
 
 class InvocationGraph(object):
-    def __init__(self, workflow, request):
-        self.__workflow = workflow
+    def __init__(self, request):
         self.__request = request
+        self.__workflow = mr.models.kv.workflow.get(request.workflow_name)
 
         self.__root_invocation = mr.models.kv.invocation.get(workflow, request.invocation_id)
         self.__job = mr.models.kv.job.get(workflow, request.job_name)

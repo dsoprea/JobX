@@ -17,7 +17,7 @@ def request_graph_get(workflow_name, request_id):
     workflow = mr.models.kv.workflow.get(workflow_name)
     request = mr.models.kv.request.get(workflow, request_id)
 
-    ig = mr.trace.InvocationGraph(workflow, request)
+    ig = mr.trace.InvocationGraph(request)
 
     dot = ig.draw_graph()
     (format, image_data) = ig.get_image_data(dot)
