@@ -25,7 +25,7 @@ workflow = mr.models.kv.workflow.get(args.workflow_name)
 request = mr.models.kv.request.get(workflow, args.request_id)
 
 def main():
-    ig = mr.trace.InvocationGraph(request, workflow)
+    ig = mr.trace.InvocationGraph(workflow, request)
 
     dot = ig.draw_graph()
     dot_source = ig.get_source(dot)

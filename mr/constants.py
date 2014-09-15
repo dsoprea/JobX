@@ -24,3 +24,7 @@ DIRECTIONS = (D_MAP, D_REDUCE)
 
 CAP_GENERAL = 'general'
 REQUIRED_CAP_NONE = 'none'
+
+# Image types.
+
+IT_PNG = 'png'

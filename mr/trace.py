@@ -1,5 +1,6 @@
 import logging
 import Queue
+import subprocess
 
 import graphviz
 
@@ -172,9 +173,9 @@ def invocation_graph_with_data_gen(workflow, request):
 
 
 class InvocationGraph(object):
-    def __init__(self, request, workflow):
-        self.__request = request
+    def __init__(self, workflow, request):
         self.__workflow = workflow
+        self.__request = request
 
         self.__root_invocation = mr.models.kv.invocation.get(workflow, request.invocation_id)
         self.__job = mr.models.kv.job.get(workflow, request.job_name)
@@ -295,3 +296,22 @@ class InvocationGraph(object):
 
     def get_source(self, dot):
         return dot.source
+
+    def get_image_data(self, dot, format=mr.config.trace.DEFAULT_IMAGE_FORMAT):
+        cmd = ['dot', '-T' + format]
+        p = subprocess.Popen(
+                cmd, 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE)
+
+        (stdout, stderr) = p.communicate(input=dot.source)
+        r = p.wait()
+
+        if r != 0:
+            raise ValueError("DOT command failed (%d):\n"
+                             "Standard output:\n%s\n"
+                             "Standard error:\n%s" % 
+                             (r, stdout, stderr))
+
+        return (format, stdout)

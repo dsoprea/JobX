@@ -16,8 +16,9 @@ import mr.config
 import mr.config.log
 import mr.config.queue
 import mr.config.ui
-import mr.views.job
 import mr.views.index
+import mr.views.request
+import mr.views.job
 import mr.views.ui.job
 import mr.queue.queue_manager
 import mr.workflow_manager
@@ -28,6 +29,7 @@ app.debug = mr.config.IS_DEBUG
 
 app.register_blueprint(mr.views.index.index_bp)
 app.register_blueprint(mr.views.job.job_bp)
+app.register_blueprint(mr.views.request.request_bp)
 
 # TODO(dustin): Put the UI views into a sub-app.
 
