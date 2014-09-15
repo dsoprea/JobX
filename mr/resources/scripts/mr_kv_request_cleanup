@@ -11,17 +11,23 @@ import pprint
 import mr.config.log
 import mr.models.kv.workflow
 import mr.models.kv.request
+import mr.request_cleanup
 
-description = "Get a request entity"
+description = "Cleanup all traces of a request"
 
 parser = argparse.ArgumentParser(description=description)
 
 parser.add_argument('workflow_name', help='Workflow name')
 parser.add_argument('request_id', help='Request ID')
 
+parser.add_argument('-s', '--simulate', 
+                    action='store_true', 
+                    help='Just simulate the cleanup')
+
 args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 request = mr.models.kv.request.get(workflow, args.request_id)
 
-print(request.get_debug())
+rc = mr.request_cleanup.RequestCleanup(request, just_simulate=args.simulate)
+rc.prune_request()
