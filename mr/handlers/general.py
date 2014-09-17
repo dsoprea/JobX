@@ -12,8 +12,7 @@ import mr.handlers.utility
 import mr.handlers.scope
 import mr.fs.general
 
-_logger = logging.getLogger(__name__)
-_logger.setLevel(logging.INFO)
+_PATH_SEP = '/'
 
 HANDLER_DEFINITION_CLS = collections.namedtuple(
                             'HandlerDefinition', 
@@ -24,6 +23,9 @@ HANDLER_DEFINITION_CLS = collections.namedtuple(
                              'argument_spec',
                              'source_type',
                              'cast_arguments'])
+
+_logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 
 class HandlerFormatException(Exception):
@@ -149,10 +151,15 @@ class Handlers(object):
         self.__compile_handlers()
 
     def __get_scope_objects(self):
-        fs = mr.fs.general.get_fs()
+        fs = mr.fs.general.get_fs(self.__workflow)
+
+        def path_join(*args):
+            return _PATH_SEP.join(args)
 
         return {
             'FS': fs,
+            'SEP': _PATH_SEP,
+            'join': path_join,
         }
 
     def __compile_handler(self, hd, arg_names, scope=None):
