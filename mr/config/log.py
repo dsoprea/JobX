@@ -4,22 +4,20 @@ import os
 
 import mr.config
 
-#logging.getLogger().setLevel(logging.WARNING)
-#logging.getLogger('mr').setLevel(logging.DEBUG)
-
 _FMT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 _FORMATTER = logging.Formatter(_FMT)
 
-logger = logging.getLogger()#'mr')
+logger = logging.getLogger()
 
-ch = logging.StreamHandler()
-ch.setFormatter(_FORMATTER)
+sh = logging.StreamHandler()
+sh.setFormatter(_FORMATTER)
+logger.addHandler(sh)
+
+sh2 = logging.handlers.SysLogHandler()
+sh2.setFormatter(_FORMATTER)
+logger.addHandler(sh2)
 
 if mr.config.IS_DEBUG is True:
     logger.setLevel(logging.DEBUG)
-    ch.setLevel(logging.DEBUG)
 else:
     logger.setLevel(logging.INFO)
-    ch.setLevel(logging.INFO)
-
-logger.addHandler(ch)
