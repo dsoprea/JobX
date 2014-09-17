@@ -16,10 +16,6 @@ class DatasetQueue(mr.models.kv.queues.queue.Queue):
     queue_class = 'dataset'
 
     def __init__(self, workflow, invocation, dataset_type, *args, **kwargs):
-        assert issubclass(
-                invocation.__class__, 
-                mr.models.kv.invocation.Invocation)
-
         assert dataset_type in _DATASET_TYPES
 
         self.__workflow = workflow
@@ -33,7 +29,7 @@ class DatasetQueue(mr.models.kv.queues.queue.Queue):
         contains the children.
         """
 
-        return (self.__workflow.workflow_name, 
-                self.__class__.queue_class, 
+        return (self.__class__.queue_class, 
+                self.__workflow.workflow_name, 
                 self.__invocation.invocation_id,
                 self.__dataset_type)

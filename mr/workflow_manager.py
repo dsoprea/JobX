@@ -7,10 +7,11 @@ import mr.handlers.source
 import mr.handlers.library
 import mr.handlers.general
 import mr.handlers.scope
+import mr.request_cleanup
 
 _MANAGED_WORKFLOW_CLS = collections.namedtuple(
                             'ManagedWorkflow', 
-                            ['workflow', 'handlers'])
+                            ['workflow', 'handlers', 'cleanup_queue'])
 
 _logger = logging.getLogger(__name__)
 
@@ -39,6 +40,10 @@ class _WorkflowManager(object):
             self.__workflow_scope_factory = None
 
     def add(self, workflow):
+        """Register a workflow, and construct a number of global, workflow-
+        specific mechanisms.
+        """
+
         if workflow.workflow_name in self.__workflows:
             raise ValueError("Workflow already registered: [%s]" % 
                              (workflow.workflow_name,))
@@ -48,9 +53,10 @@ class _WorkflowManager(object):
         l = mr.handlers.library.KvLibraryAdapter(workflow)
 
         if self.__workflow_scope_factory is not None:
-            hsf = self.__workflow_scope_factory.get_handler_scope_factory(workflow)
-            _logger.debug("Created handler-scope factory for workflow [%s]: [%s]", 
-                          workflow, hsf)
+            hsf = self.__workflow_scope_factory.get_handler_scope_factory(
+                                                    workflow)
+            _logger.debug("Created handler-scope factory for workflow [%s]: "
+                          "[%s]", workflow, hsf)
         else:
             hsf = None
 
@@ -60,9 +66,12 @@ class _WorkflowManager(object):
                 l, 
                 handler_scope_factory=hsf)
 
+        cq = mr.request_cleanup.CleanupQueue(workflow)
+
         self.__workflows[workflow.workflow_name] = _MANAGED_WORKFLOW_CLS(
                                                     workflow=workflow, 
-                                                    handlers=h)
+                                                    handlers=h,
+                                                    cleanup_queue=cq)
 
     def get(self, workflow_name):
         return self.__workflows[workflow_name]

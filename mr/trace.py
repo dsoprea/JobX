@@ -157,10 +157,11 @@ def invocation_graph_gen(workflow, request):
         else:
             was_found = True
 
+        # We can crash out because the whole point of this mechanism is forensics.
         if was_found is False:
-            raise KeyError("Could not find relationships of any kind for "
-                           "invocation [%s]." % 
-                           (from_invocation.invocation_id,))
+            _logger.error("Could not find relationships of any kind for "
+                          "invocation [%s]." % 
+                          (from_invocation.invocation_id,))
 
 
 def invocation_graph_with_data_gen(workflow, request):
@@ -184,8 +185,11 @@ class InvocationGraph(object):
         self.__request = request
         self.__workflow = mr.models.kv.workflow.get(request.workflow_name)
 
-        self.__root_invocation = mr.models.kv.invocation.get(workflow, request.invocation_id)
-        self.__job = mr.models.kv.job.get(workflow, request.job_name)
+        self.__root_invocation = mr.models.kv.invocation.get(
+                                    self.__workflow, 
+                                    request.invocation_id)
+        
+        self.__job = mr.models.kv.job.get(self.__workflow, request.job_name)
 
     def __escape(self, text):
         return text.replace("\\", "\\\\").replace('"', '\\"')

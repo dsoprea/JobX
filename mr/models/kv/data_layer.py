@@ -89,11 +89,12 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         for child in response.node.children:
             yield child.key[len(root_key) + 1:]
 
-    def wait_for_node_change(self, identity):
+# TODO(dustin): We need to call node- and directory-specific wait methods.
+    def wait_for_node_change(self, identity, recursive=True):
         """Wait for a change to exactly one node (not recursive)."""
 
         key = self.__class__.flatten_identity(identity)
-        response = _etcd.node.wait(key)
+        response = _etcd.node.wait(key, recursive=recursive)
 
         return (
             response.node.modified_index,
@@ -115,6 +116,10 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
 
         self.__root_identity = root_identity
         root_key = cls.flatten_identity(self.__root_identity)
+
+        _logger.debug("Queue resource created: [%s] => [%s]",
+                      root_identity, root_key)
+
         self.__io = _etcd.inorder.get_inorder(root_key)
 
         self.__dl = DataLayerKv()
@@ -122,6 +127,9 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
     @property
     def root_identity(self):
         return self.__root_identity
+
+    def create(self):
+        self.__dl.directory_create_only(self.__root_identity)
 
     def add(self, encoded_data):
         """This should return an ID for the queued item, so it can be recalled 
@@ -155,3 +163,8 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
 
     def delete(self):
         return self.__dl.directory_delete(self.__root_identity)
+
+    def wait_for_change(self):
+        """Wait for a change to exactly one node (not recursive)."""
+
+        return self.__dl.wait_for_node_change(self.__root_identity)

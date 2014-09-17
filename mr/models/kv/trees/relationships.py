@@ -23,8 +23,8 @@ class RelationshipsTree(mr.models.kv.trees.tree.Tree):
         contains the children.
         """
 
-        return (self.__workflow.workflow_name, 
-                self.__class__.tree_class, 
+        return (self.__class__.tree_class, 
+                self.__workflow.workflow_name, 
                 self.__from_invocation.invocation_id,
                 self.__relationship_type)
 

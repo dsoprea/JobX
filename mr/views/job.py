@@ -85,8 +85,6 @@ def job_submit(workflow_name, job_name):
 
     request.save()
 
-    flask
-
     _logger.debug("Received request: [%s]", request)
 
     message_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
@@ -108,5 +106,7 @@ def job_submit(workflow_name, job_name):
     raw_response = flask.jsonify(result)
     response = flask.make_response(raw_response)
     response.headers['X-MR-REQUEST-ID'] = request.request_id
+
+    managed_workflow.cleanup_queue.add_request(request)
 
     return response

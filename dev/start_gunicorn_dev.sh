@@ -9,4 +9,5 @@ MR_WORKFLOW_SCOPE_FACTORY_FQ_CLASS=test_scope.WorkflowScopeFactory \
 DEBUG=1 \
 MR_WORKFLOW_NAMES=dev \
 MR_RESULT_WRITER_FQ_CLASS=mr.result_writers.file.FileResultWriter \
+MR_DO_CLEANUP_REQUESTS=0 \
 ../mr/resources/scripts/mr_start_gunicorn_dev

@@ -45,11 +45,15 @@ class Handlers(object):
 
         self.__compiled = {}
 
+        self.__ucl_exit_ev = None
+        self.__ucl_t = None
+
         self.__schedule_update_check()
 
     def __del__(self):
-        self.__ucl_exit_ev.set()
-        self.__ucl_t.join()
+        if self.__ucl_t is not None:
+            self.__ucl_exit_ev.set()
+            self.__ucl_t.join()
 
     def __schedule_update_check(self):
         """Schedule a continuous check of the handler states, so that we'll 

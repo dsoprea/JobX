@@ -4,9 +4,7 @@ import mr.config.kv
 import mr.models.kv.data_layer
 
 _logger = logging.getLogger(__name__)
-#_logger.setLevel(logging.INFO)
-
-#_dl = mr.models.kv.data_layer.QueueLayerKv()
+_logger.setLevel(logging.INFO)
 
 
 class Queue(mr.models.kv.data_layer.QueueLayerKv):
@@ -75,17 +73,56 @@ class Queue(mr.models.kv.data_layer.QueueLayerKv):
         return mr.config.kv.DECODER(encoded_data)
 
     def get_entity(self, key):
-        data = self.get(key)
+        encoded_data = self.get(key)
+        data = mr.config.kv.DECODER(encoded_data)
         return self.get_entity_from_data(data)
 
-    def list(self):
-        for key, encoded_data in super(Queue, self).list():
-            yield (key, mr.config.kv.DECODER(encoded_data))
+    def list_data(self, head_count=None):
+        """Used if data was stored to the entry."""
 
-    def list_data(self):
+# TODO(dustin): We'll have to use paging as implemented by *etcd* when, er, implement it.
+        i = 0
         for encoded_data in super(Queue, self).list_data():
-            yield mr.config.kv.DECODER(encoded_data)
+            if head_count is not None and i >= head_count:
+                break
 
-    def list_entities(self):
-        for key, data in self.list():
+            yield mr.config.kv.DECODER(encoded_data)
+            i += 1
+
+    def list_keys_with_data(self, head_count=None):
+        """Used if data was stored to the entry."""
+
+# TODO(dustin): We'll have to use paging as implemented by *etcd* when, er, implement it.
+        i = 0
+        for key, encoded_data in super(Queue, self).list():
+            if head_count is not None and i >= head_count:
+                break
+
+            yield (key, mr.config.kv.DECODER(encoded_data))
+            i += 1
+
+    def list_entities(self, head_count=None):
+        """Used if an entity was encoded and stored as the data."""
+
+# TODO(dustin): We'll have to use paging as implemented by *etcd* when, er, implement it.
+        i = 0
+        for encoded_data in self.list_data():
+            if head_count is not None and i >= head_count:
+                break
+
+            data = mr.config.kv.DECODER(encoded_data)
+            yield self.get_entity_from_data(data)
+            i += 1
+
+    def list_keys_with_entities(self, head_count=None):
+        """Used if an entity was encoded and stored as the data."""
+
+# TODO(dustin): We'll have to use paging as implemented by *etcd* when, er, implement it.
+        i = 0
+        for key, encoded_data in self.list():
+            if head_count is not None and i >= head_count:
+                break
+
+            data = mr.config.kv.DECODER(encoded_data)
             yield (key, self.get_entity_from_data(data))
+            i += 1
