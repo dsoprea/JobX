@@ -15,6 +15,10 @@ required_capability: none
 
 import random
 
+#print(FS)
+#print(FS.listdir())
+
+
 # We're only using the value in the first pair.
 
 pair = arguments[0]

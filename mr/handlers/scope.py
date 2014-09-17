@@ -1,3 +1,7 @@
+"""This file describes types that will get injected into the scope of handlers.
+"""
+
+
 class MrConfigure(object):
     pass
 

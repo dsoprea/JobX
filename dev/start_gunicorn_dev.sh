@@ -10,4 +10,7 @@ DEBUG=1 \
 MR_WORKFLOW_NAMES=dev \
 MR_RESULT_WRITER_FQ_CLASS=mr.result_writers.file.FileResultWriter \
 MR_DO_CLEANUP_REQUESTS=0 \
+MR_FS_FACTORY_FQ_CLASS=mr.fs.backend.tahoe.TahoeFilesystemFactory \
+MR_FS_TAHOE_DIR_URI=URI:DIR2:um3z3xblctnajmaskpxeqvf3my:fevj3z54toroth5eeh4koh5axktuplca6gfqvht26lb2232szjoq \
+MR_FS_TAHOE_WEBAPI_URL_PREFIX=http://dustinhub:3456 \
 ../mr/resources/scripts/mr_start_gunicorn_dev

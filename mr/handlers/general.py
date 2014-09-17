@@ -10,6 +10,7 @@ import mr.models.kv.handler
 import mr.models.kv.workflow
 import mr.handlers.utility
 import mr.handlers.scope
+import mr.fs.general
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
@@ -147,11 +148,19 @@ class Handlers(object):
 
         self.__compile_handlers()
 
+    def __get_scope_objects(self):
+        fs = mr.fs.general.get_fs()
+
+        return {
+            'FS': fs,
+        }
+
     def __compile_handler(self, hd, arg_names, scope=None):
         if scope is None:
             scope = {}
 
         scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
+        scope.update(self.__get_scope_objects())
 
         processor = mr.handlers.utility.get_processor(hd.source_type)
 
