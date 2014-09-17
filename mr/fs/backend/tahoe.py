@@ -5,7 +5,7 @@ import fs.contrib.tahoelafs
 
 import mr.fs.backend.fs_factory
 
-logging.getLogger('fs.tahoelafs').setLevel(logging.INFO)
+logging.getLogger('fs.tahoelafs').setLevel(logging.WARNING)
 
 _logger = logging.getLogger(__name__)
 

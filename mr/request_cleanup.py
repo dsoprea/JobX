@@ -12,7 +12,7 @@ import mr.models.kv.queues.request_cleanup
 import mr.models.kv.trees.relationships
 
 _logger = logging.getLogger(__name__)
-_logger.setLevel(logging.INFO)
+_logger.setLevel(logging.WARNING)
 
 
 class RequestCleanup(object):
