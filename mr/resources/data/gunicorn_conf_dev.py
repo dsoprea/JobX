@@ -3,9 +3,10 @@ daemon = 'false'
 
 bind = 'unix:/tmp/mr.gunicorn.sock'
 
-# Until our packages become smaller (currently 161M), this is a safe value.
 timeout = 120
 
+# So we don't see the logging associated with the unhandled screen-resize 
+# signals.
 errorlog = '-'
 loglevel = 'warning'
 

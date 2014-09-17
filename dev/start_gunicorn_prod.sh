@@ -13,4 +13,4 @@ MR_DO_CLEANUP_REQUESTS=1 \
 MR_FS_FACTORY_FQ_CLASS=mr.fs.backend.tahoe.TahoeFilesystemFactory \
 MR_FS_TAHOE_DIR_URI=URI:DIR2:kqrikhh3qfjsiphlsy7mbzdmq4:hbrnj7w64zuxgjylyxkvxtv36pasqfu2xipin7de4uboicfnbbla \
 MR_FS_TAHOE_WEBAPI_URL_PREFIX=http://localhost:3456 \
-../mr/resources/scripts/mr_start_gunicorn_dev
+../mr/resources/scripts/mr_start_gunicorn_prod
