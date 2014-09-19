@@ -24,7 +24,9 @@ def get_current_workflows():
     when we happen to be loaded under other functions.
     """
 
-    return os.environ['MR_WORKFLOW_NAMES'].split(',')
+    default_workflow = 'test_workflow'
+    WORKFLOWS_RAW = os.environ.get('MR_WORKFLOW_NAMES', default_workflow)
+    return WORKFLOWS_RAW.split(',')
 
 CONSUMER_ENABLED = bool(int(os.environ.get('MR_CONSUME', '1')))
 
