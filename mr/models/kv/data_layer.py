@@ -19,7 +19,10 @@ class KvPreconditionException(Exception):
 
 
 class DataLayerKv(mr.models.kv.common.CommonKv):
-    def get(self, identity):
+    def get(self, identity, wait_for_state=None):
+# TODO(dustin): Finish implementing wait_for_state. We might need to rename 
+#               from "state" to "version" so that we can admit that it's an 
+#               integer while still staying a bit decoupled from etcd.
         key = self.__class__.flatten_identity(identity)
         response = _etcd.node.get(key)
 
