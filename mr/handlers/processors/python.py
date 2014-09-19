@@ -12,6 +12,9 @@ class PythonProcessor(mr.handlers.processors.processor.Processor):
     def compile(self, name, arg_names, code, scope={}):
         name = "(lambda handler '%s')" % (name,)
 
+        # We create a bonafide function so that we get the benefit of argument-
+        # checks. The downside is that the line-numbers get shifted by one.
+        #
         # Needs to start with a letter. We don't want to use the actual name, 
         # because it would be an arbitrary choice and would imply that the 
         # source-code is written that way. If this is a mechanical process, we 
