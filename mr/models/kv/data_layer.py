@@ -31,6 +31,19 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
             response.node.value
         )
 
+    def exists(self, identity, wait_for_state=None):
+# TODO(dustin): Finish implementing wait_for_state. We might need to rename 
+#               from "state" to "version" so that we can admit that it's an 
+#               integer while still staying a bit decoupled from etcd.
+        key = self.__class__.flatten_identity(identity)
+        
+        try:
+            _etcd.node.get(key)
+        except KeyError:
+            return False
+        else:
+            return True
+
     def update_only(self, identity, value, check_against_state=None):
         key = self.__class__.flatten_identity(identity)
 
@@ -133,6 +146,11 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
 
     def create(self):
         self.__dl.directory_create_only(self.__root_identity)
+
+    def exists(self, wait_for_state=None):
+        return self.__dl.exists(
+                self.__root_identity, 
+                wait_for_state=wait_for_state)
 
     def add(self, encoded_data):
         """This should return an ID for the queued item, so it can be recalled 

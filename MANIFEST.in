@@ -1,0 +1,4 @@
+include mr/resources/*
+include mr/resources/data/*
+include mr/resources/static/*
+include mr/resources/templates/*

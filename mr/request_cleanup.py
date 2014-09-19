@@ -176,6 +176,9 @@ class CleanupQueue(object):
         self.__rcq = mr.models.kv.queues.request_cleanup.RequestCleanupQueue(
                         workflow)
 
+        self.__cc_exit_ev = None
+        self.__cc_t = None
+
         _logger.debug("Checking whether request cleanup-queue currently "
                       "exists.")
 
@@ -186,9 +189,6 @@ class CleanupQueue(object):
             self.__rcq.create()
         else:
             _logger.debug("Request cleanup-queue does not need to be created.")
-
-        self.__cc_exit_ev = None
-        self.__cc_t = None
 
         if mr.config.request.DO_CLEANUP_REQUESTS is True:
             self.__schedule_cleanup_check()
@@ -213,6 +213,9 @@ class CleanupQueue(object):
         operations, and that we'll have to wait for the next add to release the
         block.
         """
+
+        if self.__rcq.exists() is False:
+            self.__rcq.create()
 
         while self.__cc_exit_ev.is_set() is False:
             _logger.debug("Checking for requests to be pruned.")

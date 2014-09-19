@@ -47,8 +47,12 @@ class KvSourceAdapter(SourceAdapter):
     def __enumerate_handlers(self):
         workflow_name = self.__workflow.workflow_name
         handlers = mr.models.kv.handler.Handler.list(workflow_name)
-        for handler in handlers:
-            yield (handler.handler_name, handler.version)
+
+        try:
+            for handler in handlers:
+                yield (handler.handler_name, handler.version)
+        except KeyError:
+            _logger.warning("No handlers are defined.")
 
     def list_handlers(self):
         return self.__enumerate_handlers()

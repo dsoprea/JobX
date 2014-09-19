@@ -28,7 +28,9 @@ setuptools.setup(
       install_requires=install_requires,
       package_data={
           'mr': ['resources/README.rst',
-                 'resources/requirements.txt'],
+                 'resources/requirements.txt',
+                 'resources/data/gunicorn_conf_dev.py',
+                 'resources/data/gunicorn_conf_prod.py'],
       },
       scripts=[
             'mr/resources/scripts/mr_draw_invocation_graph',
