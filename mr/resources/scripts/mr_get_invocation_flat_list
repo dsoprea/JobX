@@ -24,6 +24,9 @@ args = parser.parse_args()
 workflow = mr.models.kv.workflow.get(args.workflow_name)
 invocation_id = args.invocation_id
 
+# TODO(dustin): This should be rewritten to use our trace functionality (which 
+#               is a reusable form of the same functionality).
+
 while invocation_id is not None:
     invocation = mr.models.kv.invocation.get(workflow, invocation_id)
     step = mr.models.kv.step.get(workflow, invocation.step_name)

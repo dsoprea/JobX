@@ -71,7 +71,11 @@ class Tree(mr.models.kv.common.CommonKv):
         identity = self.__get_root_identity() + (name,)
         return _dl.create_only(identity, mr.config.kv.ENCODER(data))
 
-    def get_data(self, name):
+    def set(self, name, data={}):
+        identity = self.__get_root_identity() + (name,)
+        return _dl.set(identity, mr.config.kv.ENCODER(data))
+
+    def get(self, name):
         identity = self.__get_root_identity() + (name,)
         (state, encoded_data) = _dl.get(identity)
         return mr.config.kv.DECODER(encoded_data)
@@ -134,7 +138,7 @@ class Tree(mr.models.kv.common.CommonKv):
         identity = self.__get_root_identity()
         
         try:
-            _dl.get(identity)
+            _dl.directory_exists(identity)
         except KeyError:
             return False
         else:

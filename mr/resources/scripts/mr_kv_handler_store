@@ -1,27 +1,19 @@
 #!/usr/bin/env python2.7
 
 import sys
-import os.path
-dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+import os
+dev_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
 sys.path.insert(0, dev_path)
 
 import logging
 import argparse
-import json
-import yaml
-import hashlib
-import os
 
 import mr.config.log
 import mr.config.handler
-import mr.models.kv.step
 import mr.models.kv.workflow
-import mr.models.kv.handler
-import mr.handlers.utility
-
-# Documentation parsers
-_DP_YAML = 'yaml'
-_DP_JSON = 'json'
+import mr.handlers.sync
 
 _logger = logging.getLogger(__name__)
 
@@ -55,255 +47,10 @@ root_path = args.path.rstrip('/')
 simulate_only = args.simulate_only
 force_update = args.force_update
 
-def _get_recursive_file_gen(root_path):
-    for (path, dir_entries, file_entries) in os.walk(root_path):
-        rel_path = path[len(root_path) + 1:]
+hs = mr.handlers.sync.HandlerSync(
+        workflow, 
+        root_path, 
+        simulate_only, 
+        force_update)
 
-        if rel_path != '':
-            prefix = rel_path.replace('/', '_') + '_'
-        else:
-            prefix = ''
-
-        for filename in file_entries:
-            if filename[0] == '_':
-                print("[%s]: Ignoring." % (filename,))
-                continue
-
-            filepath = os.path.join(path, filename)
-            
-            pivot = filename.rfind('.')
-            if pivot == -1:
-                continue
-
-            handler_name = prefix + filename[:pivot]
-            extension = filename[pivot + 1:]
-
-            rel_filepath = os.path.join(rel_path, filename)
-            yield (filepath, rel_filepath, extension, handler_name)
-
-def _scan_files(path):
-    print("Scanning files (and adding/updating handlers):")
-    print('')
-
-    handlers_s = set()
-    for (filepath, rel_filepath, extension, handler_name) \
-        in _get_recursive_file_gen(path):
-            try:
-                source_type = mr.config.handler.CODE_EXTENSION_MAP[extension]
-            except KeyError:
-                print("[%s]: File does not look it's a source-file [that we "
-                      "can process]: [%s]" % (rel_filepath, extension))
-
-                continue
-
-            _check_handler(
-                filepath, 
-                handler_name, 
-                source_type)
-
-            handlers_s.add(handler_name)
-
-    if handlers_s:
-        print('')
-
-    handlers_to_delete = [handler 
-                          for handler 
-                          in mr.models.kv.handler.Handler.list(
-                                workflow.workflow_name)
-                          if handler.handler_name not in handlers_s]
-
-    if handlers_to_delete:
-        # Tabulate the handlers being used by steps.
-
-        print("Identifying handlers currently being used.")
-
-        used_handlers = {}
-        for step in mr.models.kv.step.Step.list(workflow.workflow_name):
-            try:
-                used_handlers[step.map_handler_name] = [step.step_name]
-            except KeyError:
-                used_handlers[step.map_handler_name].append(step.step_name)
-
-            if step.reduce_handler_name is not None:
-                try:
-                    used_handlers[step.reduce_handler_name] = [step.step_name]
-                except KeyError:
-                    used_handlers[step.reduce_handler_name].append(step.step_name)
-
-            if step.combine_handler_name is not None:
-                try:
-                    used_handlers[step.combine_handler_name] = [step.step_name]
-                except KeyError:
-                    used_handlers[step.combine_handler_name].append(step.step_name)
-
-        # Remove handlers that we didn't find source-code for.
-
-        print("Removing handlers that no longer have source-code files:")
-        print('')
-
-        for handler in handlers_to_delete:
-            # Verify that no steps implement this handler.
-
-            if handler.handler_name in used_handlers:
-                # *Prints a list of referencing steps.
-                print("[%s]: Did not have source-code file, but we can't "
-                      "remove it since it is used by: %s" % 
-                      (handler.handler_name, used_handlers[handler.handler_name]))
-            else:
-                print("[%s]: Removing (not referenced by anything, either)." % 
-                      (handler.handler_name,))
-
-                if simulate_only is False:
-                    # Nothing uses it. Delete it.
-                    handler.delete()
-
-        print('')
-    else:
-        print("No handlers need to be removed.")
-
-def _parse_doc_string(doc_string):
-    # Normalize.
-    distilled = doc_string.replace('\r', '').strip()
-
-    lines = distilled.split('\n')
-    pivot_line = None
-    type_ = _DP_YAML
-
-    for i, line in enumerate(lines):
-        line_stripped = line.strip()
-        if line_stripped[:2] == '**':
-            pivot_line = i
-            type_raw = line_stripped[2:]
-            if type_raw:
-                type_ = type_raw
-
-            break
-    else:
-        raise ValueError("No description could be isolated.")
-
-    type_ = type_.lower()
-
-    description = '\n'.join(lines[:pivot_line])
-    meta_raw = '\n'.join(lines[pivot_line + 1:])
-
-    if type_ == _DP_YAML:
-        meta = yaml.load(meta_raw)
-    elif type_ == _DP_JSON:
-        meta = json.loads(meta_raw)
-    else:
-        raise ValueError("Parser for description is invalid: [%s]" % (type_,))
-
-    return (description, meta)
-
-def _check_handler(filepath, name, source_type):
-    with open(filepath) as f:
-        source_code = f.read()
-
-    processor = mr.handlers.utility.get_processor(source_type)
-
-    # We won't have the argument list until we parse the documentation. It 
-    # doesn't have to be callable, we just need the documentation.
-    (doc_string, f) = processor.compile(name, [], source_code)
-
-    try:
-        (description, meta) = _parse_doc_string(doc_string)
-    except:
-        _logger.exception("There was a problem with the documentation for "
-                          "[%s]. TYPE=[%s]\n\nDoc String:\n\n%s\n" % 
-                          (name, source_type, doc_string.strip()))
-        raise
-
-    # The arg-spec is expressed as a dictionary in order to be more readable. 
-    # Convert it to a list of tuples.
-    meta['argument_spec'] = [(a['name'], a['type']) for a in meta['argument_spec']]
-
-    required_fields_s = set(mr.config.handler.REQUIRED_META_FIELDS)
-    available_fields_s = set(meta.keys())
-
-    if required_fields_s != available_fields_s:
-        raise ValueError("[%s] Handler has invalid/missing meta-fields: "
-                         "[%s] != [%s]" % 
-                         (name, required_fields_s, available_fields_s))
-
-    version = hashlib.sha1(doc_string + source_code).hexdigest()
-
-    try:
-        handler = mr.models.kv.handler.get(workflow, name)
-    except KeyError:
-        _create_handler(
-            name, 
-            meta, 
-            description, 
-            source_type, 
-            source_code, 
-            version)
-    else:
-        if handler.version != version or force_update:
-            _update_handler(
-                handler, 
-                meta, 
-                description,
-                source_type,
-                source_code, 
-                version)
-        else:
-            print("[%s]: Not changed." % (name,))
-
-def _validate_handler(handler):
-    """See if we can naively compile the code."""
-
-    processor = mr.handlers.utility.get_processor(handler.source_type)
-
-    _logger.debug("Attempting to compile routine [%s] with processor [%s]." % 
-                  (handler.handler_name, processor.__class__.__name__))
-
-    arg_names = [k for (k, v) in handler.argument_spec]
-
-    processor.compile(handler.handler_name, arg_names, handler.source_code)
-
-def _create_handler(name, meta, description, source_type, source_code, version):
-    print("[%s]: Creating." % (name,))
-
-# TODO(dustin): We might also want to require "test" arguments and a test 
-#               result, for unit-tests.
-
-    handler = mr.models.kv.handler.Handler(
-                workflow_name=workflow.workflow_name,
-                handler_name=name,
-                description=description,
-                argument_spec=meta['argument_spec'],
-                source_type=source_type,
-                source_code=source_code,
-                version=version,
-                handler_type=meta['handler_type'],
-                required_capability=meta['required_capability'])
-
-    _validate_handler(handler)
-
-    if simulate_only is False:
-        handler.save()
-
-def _update_handler(handler, meta, description, source_type, source_code, 
-                    version):
-    print("[%s]: Updating." % (handler.handler_name,))
-
-# TODO(dustin): We might also want to require "test" arguments and a test 
-#               result, for unit-tests.
-
-    handler.description = description
-    handler.argument_spec = meta['argument_spec']
-    handler.source_type = source_type
-    handler.source_code = source_code
-    handler.version = version
-    handler.handler_type = meta['handler_type']
-
-    _validate_handler(handler)
-
-    if simulate_only is False:
-        handler.save()
-
-if simulate_only is True:
-    print("SIMULATION ONLY!")
-    print('')
-
-_scan_files(root_path)
+hs.run()

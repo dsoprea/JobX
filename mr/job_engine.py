@@ -10,6 +10,7 @@ import json
 import time
 import pprint
 import itertools
+import collections
 
 import gevent.pool
 
@@ -23,7 +24,9 @@ import mr.models.kv.step
 import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.models.kv.trees.relationships
+import mr.models.kv.trees.sessions
 import mr.models.kv.queues.dataset
+import mr.models.kv.data_layer
 import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.shared_types
@@ -48,6 +51,10 @@ _logger = logging.getLogger(__name__)
 
 # TODO(dustin): We should have a way to render a physical image of a graph, to 
 #               express what happens in a request.
+
+HANDLER_CTX_CLS = collections.namedtuple('HANDLER_CTX_CLS', 
+                                         ('session_get', 'session_set', 
+                                          'session_list'))
 
 
 class _QueuePusher(object):
@@ -269,8 +276,11 @@ class _StepProcessor(object):
 
         return distilled_result_gen
 
-    def __apply_combiner(self, workflow, current_step, map_result_gen):
+    def __apply_combiner(self, workflow, current_step, map_invocation, 
+                         map_result_gen):
         combine_handler_name = current_step.combine_handler_name
+
+        handler_ctx = self.__get_handler_context(workflow, map_invocation)
 
         if combine_handler_name is not None:
             combine_handler = functools.partial(
@@ -278,7 +288,7 @@ class _StepProcessor(object):
                                 workflow, 
                                 combine_handler_name)
 
-            return combine_handler(map_result_gen)
+            return combine_handler(map_result_gen, handler_ctx)
         else:
             return self.__default_combiner(map_result_gen)
 
@@ -360,6 +370,7 @@ class _StepProcessor(object):
         map_result_gen = self.__apply_combiner(
                             workflow, 
                             message_parameters.step, 
+                            invocation,
                             handler_result_gen)
 
         _logger.debug("Writing result-set for invocation: [%s]", 
@@ -402,6 +413,60 @@ class _StepProcessor(object):
             message_parameters, 
             invocation)
 
+    def __get_handler_context(self, workflow, map_invocation, 
+                              allow_session_writes=True):
+        """Return accessors of data that's stored on the map_invocation."""
+
+        st = mr.models.kv.trees.sessions.SessionsTree(
+                workflow, 
+                map_invocation)
+
+        state = { 'verified': None }
+
+        def check_state():
+            # Determine if the tree needs to be created, lazily (it might have 
+            # not been used).
+            if state['verified'] is None:
+                if st.exists() is False:
+                    _logger.debug("Creating session for map-invocation: %s", 
+                                  str(map_invocation))
+
+                    try:
+                        st.create()
+                    except mr.models.kv.data_layer.KvPreconditionException:
+                        _logger.warning("It looks like the session was "
+                                        "already started by a parallel "
+                                        "mechanism.")
+                else:
+                    _logger.debug("Session for map-invocation already exists: "
+                                  "%s", str(map_invocation))
+
+                state['verified'] = True
+
+        def session_set_accessor(key, value):
+            if allow_session_writes is False:
+                raise EnvironmentError("Session writes are disabled from the "
+                                       "current context.")
+
+            check_state()
+            st.set(key, value)
+
+        def session_get_accessor(key):
+            check_state()
+            return st.get(key)
+
+        def session_list_accessor():
+            check_state()
+            return st.list()
+
+# TODO(dustin): We still have to implement the "STEP_INSTANCE_ID" field.
+#                'STEP_INSTANCE_ID': 1234,
+
+        return HANDLER_CTX_CLS(
+                session_get=session_get_accessor, 
+                session_set=session_set_accessor,
+                session_list=session_list_accessor)
+
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
 
@@ -428,8 +493,11 @@ class _StepProcessor(object):
                 _logger.debug("Sending arguments to mapper:\n%s", 
                               pprint.pformat(arguments))
 
+            handler_ctx = self.__get_handler_context(workflow, invocation)
+
             wrapped_arguments = {
                 'arguments': arguments,
+                'ctx': handler_ctx,
             }
 
             handler_result_gen = self.__call_handler(
@@ -472,6 +540,9 @@ class _StepProcessor(object):
                     invocation,
                     message_parameters)
         except:
+            _logger.exception("Exception while processing MAP under request: "
+                              "%s", str(request))
+
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
             invocation.save()
@@ -561,6 +632,9 @@ class _StepProcessor(object):
                         workflow, 
                         request)
         except:
+            _logger.exception("Exception while processing REDUCE under "
+                              "request: %s", str(request))
+
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             reduce_invocation.error = traceback.format_exc()
             reduce_invocation.save()
@@ -638,9 +712,17 @@ class _StepProcessor(object):
             print('')
 
         results_gen = ((data['k'], data['vl']) for data in results_gen)
+        
+        # Disable session writes because there's no purpose by the time we get 
+        # to the reducer.
+        handler_ctx = self.__get_handler_context(
+                        workflow, 
+                        map_invocation, 
+                        allow_session_writes=False)
 
         handler_arguments = {
             'results': results_gen,
+            'ctx': handler_ctx,
         }
 
         reduce_result_gen = self.__call_handler(
@@ -714,8 +796,16 @@ class _StepProcessor(object):
 
         results_gen = ((data['k'], data['vl']) for data in results_gen)
 
+        # Disable session writes because there's no purpose by the time we get 
+        # to the reducer.
+        handler_ctx = self.__get_handler_context(
+                        workflow, 
+                        map_invocation, 
+                        allow_session_writes=False)
+
         handler_arguments = {
             'results': results_gen,
+            'ctx': handler_ctx,
         }
 
         # Call the handler with a generator of all of the results to be 
@@ -862,24 +952,6 @@ class _RequestReceiver(object):
                 message_parameters.workflow, 
                 message_parameters.invocation, 
                 mr.models.kv.queues.dataset.DT_POST_REDUCE)
-
-# TODO(dustin): We're still this, sometimes.
-#
-#  File "/Users/dustin/development/python/mapreduce/mr/job_engine.py", line 883, in process_request
-#    r = self.__block_for_result(message_parameters)
-#  File "/Users/dustin/development/python/mapreduce/mr/job_engine.py", line 871, in __block_for_result
-#    result_pair_gen = list(result_pair_gen)
-#  File "/Users/dustin/development/python/mapreduce/mr/job_engine.py", line 868, in <genexpr>
-#    result_pair_gen = (d['p'] for d in dq.list_data())
-#  File "/Users/dustin/development/python/mapreduce/mr/models/kv/queues/queue.py", line 86, in list_data
-#    for encoded_data in super(Queue, self).list_data():
-#  File "/Users/dustin/development/python/mapreduce/mr/models/kv/data_layer.py", line 151, in <genexpr>
-#    return (d for (k, d) in self.__dl.list(self.__root_identity))
-#  File "/Users/dustin/development/python/mapreduce/mr/models/kv/data_layer.py", line 74, in list
-#    response = _etcd.node.get(root_key)
-#  File "/Users/dustin/development/python/etcd/etcd/node_ops.py", line 34, in op_wrapper
-#    raise r
-#KeyError: '/queues/dev/dataset/20b1b037e73bac377ad61e561409a4e53db1096d/post_reduce'
 
         result_pair_gen = (d['p'] for d in dq.list_data())
 

@@ -150,7 +150,7 @@ class Handlers(object):
 
         self.__compile_handlers()
 
-    def __get_scope_objects(self):
+    def __get_scope_objects(self, hd):
         fs = mr.fs.general.get_fs(self.__workflow)
 
         def path_join(*args):
@@ -160,6 +160,7 @@ class Handlers(object):
             'FS': fs,
             'SEP': _PATH_SEP,
             'join': path_join,
+            '__name__': 'handler(' + hd.name + ')',
         }
 
     def __compile_handler(self, hd, arg_names, scope=None):
@@ -167,7 +168,7 @@ class Handlers(object):
             scope = {}
 
         scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
-        scope.update(self.__get_scope_objects())
+        scope.update(self.__get_scope_objects(hd))
 
         processor = mr.handlers.utility.get_processor(hd.source_type)
 
@@ -212,12 +213,13 @@ class Handlers(object):
         arguments_list = [v for (k, v) in hd.cast_arguments(arguments_dict)]
 
         try:
-            handler = self.__compiled[name]
+            compiled = self.__compiled[name]
         except KeyError:
             _logger.exception("Handler [%s] is not registered.", name)
             raise
 
-        return handler(*arguments_list)
+        processor = mr.handlers.utility.get_processor(hd.source_type)
+        return processor.run(compiled, arguments_list)
 
 def update_workflow_handle_state(workflow_name):
     _logger.debug("Updating workflow with new handlers state.")

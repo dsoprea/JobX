@@ -10,14 +10,14 @@ _logger = logging.getLogger(__name__)
 
 # Handler types.
 HT_MAPPER = 'mapper'
-HT_REDUCER = 'reducer'
 HT_COMBINER = 'combiner'
+HT_REDUCER = 'reducer'
 
 HANDLER_TYPES = (HT_MAPPER, HT_COMBINER, HT_REDUCER)
 
-_MAPPER_ARGS_S = set(['arguments'])
-_COMBINER_ARGS_S = set(['results'])
-_REDUCER_ARGS_S = set(['results'])
+_MAPPER_ARGS_S = set(['arguments', 'ctx'])
+_COMBINER_ARGS_S = set(['results', 'ctx'])
+_REDUCER_ARGS_S = set(['results', 'ctx'])
 
 
 class ArgumentMarshalError(Exception):
@@ -93,16 +93,17 @@ class Handler(mr.models.kv.model.Model):
         distilled = {}
         for name, type_name in self.argument_spec:
             datum = arguments_dict[name]
-            cls = getattr(sys.modules['__builtin__'], type_name)
+            if type_name is not None:
+                cls = getattr(sys.modules['__builtin__'], type_name)
 
-            try:
-                typed_datum = cls(datum)
-            except ValueError as e:
-                raise ArgumentMarshalError("Invalid value [%s] for request "
-                                           "argument [%s] of type [%s]: [%s]" %
-                                           (datum, name, cls.__name__, str(e)))
+                try:
+                    datum = cls(datum)
+                except ValueError as e:
+                    raise ArgumentMarshalError("Invalid value [%s] for request "
+                                               "argument [%s] of type [%s]: [%s]" %
+                                               (datum, name, cls.__name__, str(e)))
 
-            yield (name, typed_datum)
+            yield (name, datum)
 
 def get(workflow, handler_name):
     obj = Handler.get_and_build(

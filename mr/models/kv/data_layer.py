@@ -2,6 +2,7 @@ import logging
 
 import etcd.client
 import etcd.exceptions
+import etcd.response
 
 import mr.config.etcd
 import mr.models.kv.common
@@ -15,6 +16,10 @@ _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
 
 class KvPreconditionException(Exception):
+    pass
+
+
+class KvWaitFaultException(Exception):
     pass
 
 
@@ -44,13 +49,17 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         else:
             return True
 
-    def update_only(self, identity, value, check_against_state=None):
+    def set(self, identity, encoded_data):
+        key = self.__class__.flatten_identity(identity)
+        return _etcd.node.set(key, encoded_data)
+
+    def update_only(self, identity, encoded_data, check_against_state=None):
         key = self.__class__.flatten_identity(identity)
 
         try:
             return _etcd.node.compare_and_swap(
                         key, 
-                        value, 
+                        encoded_data, 
                         prev_exists=True, 
                         current_index=check_against_state)
         except etcd.exceptions.EtcdPreconditionException:
@@ -60,11 +69,11 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         # logging (no exception-from-exception messages).
         raise KvPreconditionException("Update or state precondition failed.")
 
-    def create_only(self, identity, value):
+    def create_only(self, identity, encoded_data):
         key = self.__class__.flatten_identity(identity)
 
         try:
-            return _etcd.node.create_only(key, value)
+            return _etcd.node.create_only(key, encoded_data)
         except etcd.exceptions.EtcdPreconditionException:
             pass
 
@@ -84,13 +93,17 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         key = self.__class__.flatten_identity(identity)
         return _etcd.directory.delete_recursive(key)
 
+    def directory_exists(self, identity):
+        key = self.__class__.flatten_identity(identity)
+        _etcd.node.get(key)
+
     def list(self, root_identity):
         root_key = self.__class__.flatten_identity(root_identity)
 
         response = _etcd.node.get(root_key)
         for child in response.node.children:
-            # Don't just decode the data, but derive the identity for this 
-            # child as well (clip the search-key path-prefix from the child-key).
+            # Derive the identity for this child as well (clip the search-key 
+            # path-prefix from the child-key).
             yield (child.key[len(root_key) + 1:], child.value)
 
     def list_keys(self, root_identity):
@@ -110,7 +123,11 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         """Wait for a change to exactly one node (not recursive)."""
 
         key = self.__class__.flatten_identity(identity)
-        response = _etcd.node.wait(key, recursive=recursive)
+        
+        try:
+            response = _etcd.node.wait(key, recursive=recursive)
+        except etcd.response.EmptyResponseError:
+            raise KvWaitFaultException()
 
         return (
             response.node.modified_index,
@@ -188,4 +205,7 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
     def wait_for_change(self):
         """Wait for a change to exactly one node (not recursive)."""
 
-        return self.__dl.wait_for_node_change(self.__root_identity)
+        try:
+            return self.__dl.wait_for_node_change(self.__root_identity)
+        except etcd.response.EmptyResponseError:
+            raise KvWaitFaultException()

@@ -16,6 +16,10 @@ import mr.constants
 
 _logger = logging.getLogger(__name__)
 
+
+class InvocationLookupError(KeyError):
+    pass
+
 def _get_child_info(workflow, child_invocation, parent_invocation=None):
     # Read arguments.
 
@@ -62,9 +66,12 @@ def invocation_graph_gen(workflow, request):
     """
 
     def get_invocation(invocation_id):
-        return mr.models.kv.invocation.get(
-                workflow, 
-                invocation_id)
+        try:
+            return mr.models.kv.invocation.get(
+                    workflow, 
+                    invocation_id)
+        except KeyError:
+            raise InvocationLookupError(invocation_id)
 
     root_invocation = get_invocation(request.invocation_id)
 
@@ -73,8 +80,7 @@ def invocation_graph_gen(workflow, request):
     q = Queue.Queue()
     q.put(root_invocation)
 
-#    membership = (root_invocation.invocation_id, 'mapped')
-    membership = (root_invocation.invocation_id)
+    membership = root_invocation.invocation_id
     visited_s = set([membership])
     reducer_to_parent_relations_s = set()
 
@@ -99,8 +105,7 @@ def invocation_graph_gen(workflow, request):
             for to_invocation in entities:
                 yield (to_invocation, from_invocation, False)
 
-#                membership = (to_invocation.invocation_id, 'mapped')
-                membership = (to_invocation.invocation_id)
+                membership = to_invocation.invocation_id
                 if membership not in visited_s:
                     q.put(to_invocation)
                     visited_s.add(membership)
@@ -143,9 +148,8 @@ def invocation_graph_gen(workflow, request):
                 # reducer to the original mapping (we have a list of all of the 
                 # constituent datasets).
                 if reducer_parent_relation_member not in \
-                    reducer_to_parent_relations_s:
-#                    membership = (to_invocation.invocation_id, 'reduced')
-                    membership = (to_invocation.invocation_id)
+                   reducer_to_parent_relations_s:
+                    membership = to_invocation.invocation_id
                     if membership not in visited_s:
                         q.put(to_invocation)
                         visited_s.add(membership)
@@ -162,7 +166,6 @@ def invocation_graph_gen(workflow, request):
             _logger.error("Could not find relationships of any kind for "
                           "invocation [%s]." % 
                           (from_invocation.invocation_id,))
-
 
 def invocation_graph_with_data_gen(workflow, request):
     """Return a generator that presents every a (parent, child) tuple of 

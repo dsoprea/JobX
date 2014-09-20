@@ -10,6 +10,7 @@ import mr.models.kv.workflow
 import mr.models.kv.queues.dataset
 import mr.models.kv.queues.request_cleanup
 import mr.models.kv.trees.relationships
+import mr.models.kv.trees.sessions
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.WARNING)
@@ -121,9 +122,31 @@ class RequestCleanup(object):
             _logger.debug("Removed REDUCED relationships: [%s]", 
                           invocation.invocation_id)
 
+    def __prune_invocation_sessions(self, map_invocation):
+        """Remove the session-data associated with the mapping-invocation."""
+
+        try:
+            st = mr.models.kv.trees.sessions.SessionsTree(
+                    self.__workflow, 
+                    map_invocation)
+
+            if self.__just_simulate is True:
+                list(st.list())
+            else:
+                st.delete()
+        except KeyError:
+            _logger.debug("No sessions to remove for invocation: "
+                          "[%s]", map_invocation.invocation_id)
+        else:
+            _logger.debug("Removed sessions: [%s]", 
+                          map_invocation.invocation_id)
+
     def __prune_invocation(self, invocation):
         self.__prune_invocation_data(invocation)
         self.__prune_invocation_relationships(invocation)
+
+        if invocation.direction == mr.constants.D_MAP:
+            self.__prune_invocation_sessions(invocation)
 
         if self.__just_simulate is True:
             _logger.debug("SIMULATION: Not removing invocation: %s", 
@@ -141,13 +164,21 @@ class RequestCleanup(object):
 
         invocations = {}
 
-        for (child_invocation, parent_invocation, is_loop_to_self) \
-            in mr.trace.invocation_graph_gen(self.__workflow, self.__request):
-                invocations[child_invocation.invocation_id] = child_invocation
+        try:
+            for (child_invocation, parent_invocation, is_loop_to_self) \
+                in mr.trace.invocation_graph_gen(self.__workflow, self.__request):
+                    invocations[child_invocation.invocation_id] = child_invocation
 
-                if parent_invocation is not None:
-                    invocations[parent_invocation.invocation_id] = \
-                        parent_invocation
+                    if parent_invocation is not None:
+                        invocations[parent_invocation.invocation_id] = \
+                            parent_invocation
+        except mr.trace.InvocationLookupError:
+# TODO(dustin): We might try to recover from this, either inside the tracer or 
+#               using an alternative, recovery-oriented mechanism.
+            _logger.warning("It looks like a previous prune may have been "
+                            "interrupted. There was a problem identifying "
+                            "records to cleanup for request [%s].", 
+                            str(self.__request))
 
         if mr.config.IS_DEBUG is True:
             _logger.debug("(%d) invocations to be pruned:\n%s", 
@@ -176,7 +207,7 @@ class CleanupQueue(object):
         self.__rcq = mr.models.kv.queues.request_cleanup.RequestCleanupQueue(
                         workflow)
 
-        self.__cc_exit_ev = None
+        self.__cc_exit_ev = threading.Event()
         self.__cc_t = None
 
         _logger.debug("Checking whether request cleanup-queue currently "
@@ -197,12 +228,11 @@ class CleanupQueue(object):
                             "cleanup thread.")
 
     def __del__(self):
-        if self.__cc_t is not None:
+        if self.__cc_t is not None and self.__cc_t.is_alive() is True:
             self.__cc_exit_ev.set()
             self.__cc_t.join()
 
     def __schedule_cleanup_check(self):
-        self.__cc_exit_ev = threading.Event()
         self.__cc_t = threading.Thread(target=self.__cleanup_check)
         self.__cc_t.start()
 
@@ -244,8 +274,17 @@ class CleanupQueue(object):
 
             if i == 0:
                 _logger.debug("No requests found to be pruned. Blocking.")
+
+                while 1:
+                    try:
 # TODO(dustin): We might want to time-out after a particular interval.
-                self.__rcq.wait_for_change()
+                        self.__rcq.wait_for_change()
+                    except mr.models.kv.data_layer.KvWaitFaultException:
+                        _logger.debug("Request-cleanup wait fault. Recycling.")
+                        continue
+                    else:
+                        break
+
                 continue
 
             _logger.debug("(%d) requests were pruned.", i)

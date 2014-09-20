@@ -2,12 +2,12 @@ Flask==0.10.1
 Jinja2==2.7.3
 MarkupSafe==0.23
 Werkzeug==0.9.6
-etcd==2.0.3
+etcd==2.0.4
 fs==0.5.0
 gevent==1.0.1
 graphviz==0.4
 greenlet==0.4.2
-gunicorn==19.0.0
+gunicorn==19.1.1
 itsdangerous==0.24
 nsqs==0.2.0
 pytz==2013.8

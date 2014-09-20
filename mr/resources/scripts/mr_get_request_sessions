@@ -1,0 +1,58 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
+
+import argparse
+
+import mr.constants
+import mr.config.log
+import mr.models.kv.request
+import mr.models.kv.trees.sessions
+import mr.trace
+
+description = "List any sessions that were stored on any invocations created "\
+              "under the given request"
+
+parser = argparse.ArgumentParser(description=description)
+
+parser.add_argument('workflow_name', help='Workflow name')
+parser.add_argument('request_id', help='Request ID')
+
+args = parser.parse_args()
+
+workflow = mr.models.kv.workflow.get(args.workflow_name)
+request_id = args.request_id
+
+request = mr.models.kv.request.get(workflow, request_id)
+
+displayed_s = set()
+
+for child_info, is_loop_to_self \
+        in mr.trace.invocation_graph_with_data_gen(workflow, request):
+    (child_invocation, argument_data, post_combine_data, 
+     post_reduce_data, parent_invocation) = child_info
+
+    if child_invocation.invocation_id in displayed_s:
+        continue
+
+    displayed_s.add(child_invocation.invocation_id)
+
+    if child_invocation.direction != mr.constants.D_MAP:
+        continue
+
+    st = mr.models.kv.trees.sessions.SessionsTree(workflow, child_invocation)
+
+    try:
+        pairs = list(st.list())
+    except KeyError:
+        continue
+
+    print("Invocation: %s" % (str(child_invocation),))
+
+    for k, v in pairs:
+        print("[%s]: [%s]" % (k, v))
+
+    print('')

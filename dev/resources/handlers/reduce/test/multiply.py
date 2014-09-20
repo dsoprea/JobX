@@ -11,6 +11,8 @@ handler_type: reducer
 required_capability: none
 """
 
+print("GET(reduce): %s" % (ctx.session_get('key2'),))
+
 print("handler2 results: %s" % (results,))
 
 tally = {}

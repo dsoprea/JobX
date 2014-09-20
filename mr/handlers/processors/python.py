@@ -34,8 +34,10 @@ class PythonProcessor(mr.handlers.processors.processor.Processor):
 
             # The maximum line-width for proper Python modules.
             border = '-' * 79
-            _logger.debug("Handler [%s]\n%s\n%s\n%s", 
-                          name, border, code.rstrip(), border)
+            _logger.debug("Handler [%s]", name)
+            _logger.debug(border)
+            [_logger.debug(line) for line in code.rstrip().split('\n')]
+            _logger.debug(border)
 
         c = compile(code, name, 'exec')
         
@@ -53,3 +55,6 @@ class PythonProcessor(mr.handlers.processors.processor.Processor):
         f = locals_[id_]
 
         return (f.__doc__, f)
+
+    def run(self, compiled, arguments):
+        return compiled(*arguments)
