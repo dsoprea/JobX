@@ -8,66 +8,95 @@ sys.path.insert(0, dev_path)
 import argparse
 
 import mr.config.log
-import mr.models.kv.invocation
-import mr.models.kv.step
-import mr.models.kv.queues.dataset
+import mr.trace
+import mr.models.kv.request
 
 description = "Print the invocation-graph for a request"
 
 parser = argparse.ArgumentParser(description=description)
 
 parser.add_argument('workflow_name', help='Workflow name')
-parser.add_argument('invocation_id', help='Invocation ID')
+parser.add_argument('request_id', help='Request ID')
 
 args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
-invocation_id = args.invocation_id
+request_id = args.request_id
 
-# TODO(dustin): This should be rewritten to use our trace functionality (which 
-#               is a reusable form of the same functionality).
+request = mr.models.kv.request.get(workflow, request_id)
 
-while invocation_id is not None:
-    invocation = mr.models.kv.invocation.get(workflow, invocation_id)
-    step = mr.models.kv.step.get(workflow, invocation.step_name)
+#for child_info, is_loop_to_self \
+#        in mr.trace.invocation_graph_with_data_gen(workflow, request):
+#    (child_invocation, argument_data, post_combine_data, 
+#     post_reduce_data, parent_invocation) = child_info
+#    print("[%s]: PARENT=[%s] DS_ARGS=[%s] DS_POSTCOMBINE=[%s] "
+#          "DS_POSTREDUCE=[%s]" % 
+#          (str(child_invocation), str(parent_invocation), bool(argument_data), 
+#           bool(post_combine_data), bool(post_reduce_data)))
+#
 
-    if invocation.direction == mr.constants.D_MAP:
-        handler_phrase = ('[%s]->[%s]' % 
-                          (step.map_handler_name, step.combine_handler_name))
-    elif invocation.direction == mr.constants.D_REDUCE:
-        handler_phrase = ('[%s]' % (step.reduce_handler_name))
-    else:
-        raise ValueError("Invocation direction [%s] is not valid." % 
-                         (invocation.direction,))
+relationships = {}
+invocations = {}
 
-    dqa = mr.models.kv.queues.dataset.DatasetQueue(
-        workflow, 
-        invocation,
-        mr.models.kv.queues.dataset.DT_ARGUMENTS)
+for child_info, is_loop_to_self \
+        in mr.trace.invocation_graph_with_data_gen(workflow, request):
+    (child_invocation, argument_data, post_combine_data, 
+     post_reduce_data, parent_invocation) = child_info
+
+    invocations[child_invocation.invocation_id] = (
+        child_invocation.direction,
+        child_invocation.step_name,
+        argument_data, 
+        post_combine_data, 
+        post_reduce_data,
+        is_loop_to_self)
+
+    parent_invocation_id = parent_invocation.invocation_id \
+                            if parent_invocation is not None \
+                            else None
 
     try:
-        dqa.list_data()
+        relationships[parent_invocation_id].append(
+            child_invocation.invocation_id)
     except KeyError:
-        has_arguments = True
-    else:
-        has_arguments = False
+        relationships[parent_invocation_id] = [
+            child_invocation.invocation_id]
 
-    dqr = mr.models.kv.queues.dataset.DatasetQueue(
-        workflow, 
-        invocation,
-        mr.models.kv.queues.dataset.DT_POST_REDUCE)
+if len(relationships[None]) > 1:
+    raise ValueError("More then one root node was identified.")
+
+visited_s = set()
+
+def print_invocation(invocation_id, indent=0):
+    already_visited = invocation_id in visited_s
+    already_visited_suffix = '*' if already_visited else ''
+
+    sys.stdout.write(' ' * indent + invocation_id + already_visited_suffix)
+
+    if already_visited is True:
+        sys.stdout.write('\n')
+        return
+
+    (direction, step_name, argument_data, post_combine_data, post_reduce_data,
+     is_loop_to_self) = invocations[invocation_id]
+
+    sys.stdout.write(' ' + direction[0].upper() + ' [')
+    sys.stdout.write('X' if argument_data else '-')
+    sys.stdout.write('X' if post_combine_data else '-')
+    sys.stdout.write('X' if post_reduce_data else '-')
+    sys.stdout.write(']')
+    sys.stdout.write(' ' + step_name)
+    sys.stdout.write('\n')
+
+    visited_s.add(invocation_id)
 
     try:
-        dqr.list_data()
+        children = relationships[invocation_id]
     except KeyError:
-        has_results = True
+        pass
     else:
-        has_results = False
+        for child_id in children:
+            print_invocation(child_id, indent + 2)
 
-    direction_aligned = '[%s]' % invocation.direction
-
-    print("Invocation: [%s] %8s %50s A=[%s] R=[%s] P=[%s]" % 
-          (invocation.invocation_id, direction_aligned, handler_phrase,
-           has_arguments, has_results, invocation.parent_invocation_id))
-
-    invocation_id = invocation.parent_invocation_id
+root_id = relationships[None][0]
+print_invocation(root_id)

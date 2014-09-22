@@ -18,6 +18,12 @@ sh2.setFormatter(_FORMATTER)
 logger.addHandler(sh2)
 
 if mr.config.IS_DEBUG is True:
+# TODO(dustin): Debugging.
+    fh = logging.FileHandler('/tmp/mr.flow.log')
+    flow_logger = logging.getLogger('mr.job_engine.flow')
+    flow_logger.addHandler(fh)
+    flow_logger.setLevel(logging.DEBUG)
+
     logger.setLevel(logging.DEBUG)
 else:
     logger.setLevel(logging.INFO)

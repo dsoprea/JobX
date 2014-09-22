@@ -22,7 +22,12 @@ class DatasetQueue(mr.models.kv.queues.queue.Queue):
         self.__invocation = invocation
         self.__dataset_type = dataset_type
 
-        super(DatasetQueue, self).__init__(*args, **kwargs)
+        log_key = ('%s-%s' % (str(invocation), self.__dataset_type))
+
+        super(DatasetQueue, self).__init__(
+            *args, 
+            log_key=log_key, 
+            **kwargs)
 
     def get_root_tree_identity(self):
         """Returns a complete tuple that'll be flattened to the path that 
@@ -33,3 +38,9 @@ class DatasetQueue(mr.models.kv.queues.queue.Queue):
                 self.__workflow.workflow_name, 
                 self.__invocation.invocation_id,
                 self.__dataset_type)
+
+    def __write_debug(self, message):
+        if mr.config.IS_DEBUG is True:
+            _logger.debug("QUEUE(%s): %s", self.__get_root_identity(), message)        
+
+

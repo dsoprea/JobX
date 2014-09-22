@@ -4,19 +4,13 @@ import json
 
 import mr.models.kv.job
 import mr.models.kv.step
-import mr.models.kv.request
 import mr.models.kv.handler
-import mr.models.kv.invocation
 import mr.workflow_manager
 import mr.job_engine
-import mr.shared_types
 
 _logger = logging.getLogger(__name__)
 
-job_bp = flask.Blueprint(
-            'job', 
-            __name__,
-            url_prefix='/job')
+job_bp = flask.Blueprint('job', __name__, url_prefix='/job')
 
 def _get_arguments_from_request():
     request_data = flask.request.get_json()
@@ -35,7 +29,6 @@ def _get_arguments_from_request():
 
 @job_bp.route('/<workflow_name>/<job_name>', methods=['POST'])
 def job_submit(workflow_name, job_name):
-
 # TODO(dustin): We need to determine whether or not a terminated connection 
 #               will terminate the request. If so, we'll need to figure out 
 #               how to prevent it (maybe just a Gunicorn or Nginx change).
@@ -56,57 +49,46 @@ def job_submit(workflow_name, job_name):
         'requester_ip': flask.request.remote_addr
     }
 
-    invocation = mr.models.kv.invocation.Invocation(
-                    invocation_id=None,
-                    workflow_name=workflow_name,
-                    step_name=step.step_name,
-                    direction=mr.constants.D_MAP)
+    rr = mr.job_engine.get_request_receiver()
+    code = 200
+    exception_type = None
+    exception_message = None
 
-    invocation.save()
+    message_parameters = rr.package_request(
+                            workflow, 
+                            job, 
+                            step, 
+                            handler, 
+                            arguments, 
+                            context)
 
-    dq = mr.models.kv.queues.dataset.DatasetQueue(
-            workflow, 
-            invocation,
-            mr.models.kv.queues.dataset.DT_ARGUMENTS)
+    request = message_parameters.request
 
-    for (k, v) in arguments:
-        data = {
-            'p': (k, v),
+    try:
+        result_tokens = rr.process_request(message_parameters)
+
+        result = {
+            'result': result_tokens,
         }
 
-        dq.add(data)
+        code = 200
+    except Exception as e:
+        _logger.exception("Request failed.")
 
-    request = mr.models.kv.request.Request(
-                request_id=None,
-                workflow_name=workflow_name,
-                job_name=job.job_name, 
-                invocation_id=invocation.invocation_id,
-                context=context)
+        result = {}
 
-    request.save()
-
-    _logger.debug("Received request: [%s]", request)
-
-    message_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
-                            workflow=workflow,
-                            invocation=invocation,
-                            request=request,
-                            job=job, 
-                            step=step,
-                            handler=handler)
-
-    rr = mr.job_engine.get_request_receiver()
-    (request_id, result_tokens) = rr.process_request(message_parameters)
-
-    result = {
-        'request_id': request_id,
-        'result': result_tokens,
-    }
+        code = 500
+        exception_type = e.__class__.__name__
+        exception_message = e.message
 
     raw_response = flask.jsonify(result)
     response = flask.make_response(raw_response)
     response.headers['X-MR-REQUEST-ID'] = request.request_id
 
+    if exception_type is not None:
+        response.headers['X-MR-EXCEPTION-TYPE'] = exception_type
+        response.headers['X-MR-EXCEPTION-MESSAGE'] = exception_message
+
     managed_workflow.cleanup_queue.add_request(request)
 
-    return response
+    return (response, code)

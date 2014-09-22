@@ -462,7 +462,7 @@ class Model(mr.models.kv.common.CommonKv):
     def __wait_encoded(cls, parent, identity):
         key = cls.key_from_identity(parent, identity)
         
-        (state, value) = _dl.wait_for_node_change(key)
+        (state, value) = _dl.wait(key)
 
         return (
             {

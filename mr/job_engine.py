@@ -27,6 +27,7 @@ import mr.models.kv.trees.relationships
 import mr.models.kv.trees.sessions
 import mr.models.kv.queues.dataset
 import mr.models.kv.data_layer
+import mr.models.kv.request
 import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.shared_types
@@ -35,6 +36,7 @@ import mr.handlers.scope
 import mr.utility
 
 _logger = logging.getLogger(__name__)
+_flow_logger = _logger.getChild('flow')
 
 # TODO(dustin): We can maintain a nice little cache if the whole cluster pushes 
 #               updates to it.
@@ -49,13 +51,15 @@ _logger = logging.getLogger(__name__)
 #               sacrificing durability (if the process going down, there should 
 #               still be a high degree of synchronization).
 
-# TODO(dustin): We should have a way to render a physical image of a graph, to 
-#               express what happens in a request.
-
 HANDLER_CTX_CLS = collections.namedtuple('HANDLER_CTX_CLS', 
                                          ('session_get', 'session_set', 
                                           'session_list'))
 
+#_request_logger = logging.getLogger('request-log')
+#
+#def _get_mr_log(request, path_type, message, severity='info'):
+#    l = _request_logger.getChild(request.request_id).getChild(path_type)
+#    getattr(l, severity)(message)
 
 class _QueuePusher(object):
     def __init__(self):
@@ -103,7 +107,7 @@ class _QueuePusher(object):
                             reduce_step.reduce_handler_name)
 
         _logger.debug("Queueing reduce of step [%s] for parent invocation: [%s]", 
-                      reduce_step.step_name, parent_invocation.invocation_id)
+                      reduce_step.step_name, parent_invocation)
 
         workflow = message_parameters.workflow
 
@@ -131,8 +135,7 @@ class _QueuePusher(object):
         assert reduce_parameters.handler is not None
 
         _logger.debug("Reduction [%s] will be performed over step: [%s].", 
-                      reduce_parameters.invocation.invocation_id, 
-                      reduce_step.step_name)
+                      reduce_parameters.invocation, reduce_step.step_name)
 
         if reduce_handler.required_capability != \
                 mr.constants.REQUIRED_CAP_NONE:
@@ -190,6 +193,10 @@ class _StepProcessor(object):
                                 direction=mr.constants.D_MAP)
 
         map_invocation.save()
+
+        _flow_logger.debug("+ Writing ARGUMENTS dataset from [%s] to "
+                           "downstream mapper [%s].",
+                           parent_map_invocation, map_invocation)
 
         # Store the arguments for the new invocation.
 
@@ -313,7 +320,7 @@ class _StepProcessor(object):
         i = 0
         for (k, v) in mapped_steps_gen:
             _logger.debug("Queueing mapping (%d) from invocation [%s].",
-                          i, invocation.invocation_id)
+                          i, invocation)
 
             self.__queue_map_step(
                     mapped_step, 
@@ -334,7 +341,7 @@ class _StepProcessor(object):
         # counters.
 
         _logger.debug("Invocation [%s] has mapped (%d) steps.", 
-                      invocation.invocation_id, step_count)
+                      invocation, step_count)
 
 # TODO(dustin): We might need to check for whether a reduction is necessary 
 #               here. By the time we get here, we could've potentially finished 
@@ -347,7 +354,7 @@ class _StepProcessor(object):
 
         _logger.debug("Invocation [%s] has had its counts updated: MC=(%d) "
                       "MW=(%d)", 
-                      invocation.invocation_id, invocation.mapped_count, 
+                      invocation, invocation.mapped_count, 
                       invocation.mapped_waiting)
 
     def __map_collect_result(self, handler_name, handler_result_gen, workflow, 
@@ -373,8 +380,10 @@ class _StepProcessor(object):
                             invocation,
                             handler_result_gen)
 
-        _logger.debug("Writing result-set for invocation: [%s]", 
-                      invocation.invocation_id)
+        _logger.debug("Writing result-set for invocation: [%s]", invocation)
+
+        _flow_logger.debug("+ Writing POST-COMBINE dataset received from "
+                           "mapper to itself: [%s]", invocation)
 
         dq = mr.models.kv.queues.dataset.DatasetQueue(
                 workflow, 
@@ -397,7 +406,7 @@ class _StepProcessor(object):
             i += 1
 
         _logger.debug("Result-set of size (%d) written for invocation [%s]. "
-                      "Queueing reduction.", i, invocation.invocation_id)
+                      "Queueing reduction.", i, invocation)
 
         # We're here because a map operation rendered a result (and did not map 
         # further downstream). It's tempting to want to reduce here, but we'd 
@@ -429,7 +438,7 @@ class _StepProcessor(object):
             if state['verified'] is None:
                 if st.exists() is False:
                     _logger.debug("Creating session for map-invocation: %s", 
-                                  str(map_invocation))
+                                  map_invocation)
 
                     try:
                         st.create()
@@ -439,7 +448,7 @@ class _StepProcessor(object):
                                         "mechanism.")
                 else:
                     _logger.debug("Session for map-invocation already exists: "
-                                  "%s", str(map_invocation))
+                                  "%s", map_invocation)
 
                 state['verified'] = True
 
@@ -475,10 +484,13 @@ class _StepProcessor(object):
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
         
-        _logger.debug("Processing MAP: [%s]", invocation.invocation_id)
+        _logger.debug("Processing MAP: [%s]", invocation)
 
         try:
             ## Call the handler.
+
+            _flow_logger.debug("  Reading ARGUMENTS dataset for (and from) "
+                               "mapper: [%s]", invocation)
 
             dq = mr.models.kv.queues.dataset.DatasetQueue(
                     workflow, 
@@ -508,8 +520,7 @@ class _StepProcessor(object):
             path_type = next(handler_result_gen)
 
             _logger.debug("Mapper [%s] path-type: [%s]", 
-                          invocation.invocation_id, 
-                          path_type.__class__.__name__)
+                          invocation, path_type.__class__.__name__)
 
             assert issubclass(
                     path_type.__class__, 
@@ -541,7 +552,7 @@ class _StepProcessor(object):
                     message_parameters)
         except:
             _logger.exception("Exception while processing MAP under request: "
-                              "%s", str(request))
+                              "%s", request)
 
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             invocation.error = traceback.format_exc()
@@ -609,8 +620,7 @@ class _StepProcessor(object):
             if map_invocation.mapped_waiting is None:
                 _logger.debug("Processing REDUCE [%s] -of- original MAP "
                               "invocation [%s] that rendered a DATASET.",
-                              reduce_invocation.invocation_id, 
-                              map_invocation.invocation_id)
+                              reduce_invocation, map_invocation)
 
                 return self.__handle_mapped_dataset_reduce(
                         message_parameters,
@@ -622,8 +632,7 @@ class _StepProcessor(object):
                 _logger.debug("Processing REDUCE [%s] -of- original MAP "
                               "invocation [%s] that rendered DOWNSTREAM "
                               "MAPPINGS.",
-                              reduce_invocation.invocation_id, 
-                              map_invocation.invocation_id)
+                              reduce_invocation, map_invocation)
 
                 return self.__handle_mapped_mapping_reduce(
                         message_parameters,
@@ -633,7 +642,7 @@ class _StepProcessor(object):
                         request)
         except:
             _logger.exception("Exception while processing REDUCE under "
-                              "request: %s", str(request))
+                              "request: %s", request)
 
 # TODO(dustin): We might have to remove the chain of invocations, on error.
             reduce_invocation.error = traceback.format_exc()
@@ -652,6 +661,10 @@ class _StepProcessor(object):
         # Call the handler with a generator of all of the results to be 
         # reduced.
 
+        _flow_logger.debug("  Reading POST-COMBINE datasets for [%s] from "
+                           "downstream mappings.", 
+                           message_parameters.invocation)
+
         def get_results_gen():
             """Enumerate all (key, value_list) from all results of all 
             invocations mapped from this invocation.
@@ -661,6 +674,9 @@ class _StepProcessor(object):
             keys (which is a relatively normal circumstance, but entirely 
             unavoidable of multidimensional-mappings).
             """
+
+            _logger.debug("Aggregating results of mapping: [%s]", 
+                          map_invocation)
 
             parent_tree = mr.models.kv.trees.relationships.RelationshipsTree(
                             workflow, 
@@ -684,12 +700,19 @@ class _StepProcessor(object):
                 
                 rt.add_entity(map_invocation, data=data)
 
-                # Yield through the dataset.
+                # Yield through the reduction datasets of each of the mappings 
+                # that we branched to.
+
+                _flow_logger.debug("  Reading constituent POST-REDUCE result "
+                                   "for parent [%s] by [%s] from: [%s]", 
+                                   map_invocation, 
+                                   message_parameters.invocation, 
+                                   mapped_invocation)
 
                 dq = mr.models.kv.queues.dataset.DatasetQueue(
                         workflow, 
                         mapped_invocation,
-                        mr.models.kv.queues.dataset.DT_POST_COMBINE)
+                        mr.models.kv.queues.dataset.DT_POST_REDUCE)
 
                 for data in dq.list_data():
                     yield data
@@ -702,17 +725,18 @@ class _StepProcessor(object):
             _logger.debug("(%d) results will be reduced by step [%s] for "
                           "original invocation [%s].",
                           len(results_gen), step.reduce_handler_name, 
-                          map_invocation.invocation_id)
-            
+                          map_invocation)
+
             print('')
             for (i, data) in enumerate(results_gen):
-                print("Result (%d)\nKey: %s\n Value List: %s" % 
-                      (i, data['k'], data['vl']))
+                (k, v) = data['p']
+                print("Result (%d)\nKey: %s\n Value: %s" % 
+                      (i, k, v))
 
             print('')
 
-        results_gen = ((data['k'], data['vl']) for data in results_gen)
-        
+        results_gen = (data['p'] for data in results_gen)
+
         # Disable session writes because there's no purpose by the time we get 
         # to the reducer.
         handler_ctx = self.__get_handler_context(
@@ -733,8 +757,7 @@ class _StepProcessor(object):
         if mr.config.IS_DEBUG is True:
             reduce_result_gen = list(reduce_result_gen)            
             _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
-                          step.reduce_handler_name, 
-                          map_invocation.invocation_id,
+                          step.reduce_handler_name, map_invocation,
                           pprint.pformat(reduce_result_gen))
 
         if map_invocation.parent_invocation_id is not None:
@@ -754,6 +777,13 @@ class _StepProcessor(object):
                                        map_invocation, workflow, request):
         """Reduce over a mapping invocation that mapped to downstream steps."""
 
+        _logger.debug("Reducing over mapped results of mapper: [%s]", 
+                      map_invocation)
+
+        _flow_logger.debug("  Reading POST-COMBINE dataset from [%s] returned "
+                           "by mapper: [%s]", 
+                           message_parameters.invocation, map_invocation)
+
         # Establish the dataset that was rendered by the one map.
 
         dq = mr.models.kv.queues.dataset.DatasetQueue(
@@ -769,7 +799,7 @@ class _StepProcessor(object):
             _logger.debug("(%d) results will be reduced by step [%s] for "
                           "original invocation [%s].",
                           len(results_gen), step.reduce_handler_name, 
-                          map_invocation.invocation_id)
+                          map_invocation)
             
             print('')
             for (i, data) in enumerate(results_gen):
@@ -819,8 +849,7 @@ class _StepProcessor(object):
         if mr.config.IS_DEBUG is True:
             reduce_result_gen = list(reduce_result_gen)            
             _logger.debug("Handler [%s] reduction [%s] result:\n%s", 
-                          step.reduce_handler_name, 
-                          map_invocation.invocation_id, 
+                          step.reduce_handler_name, map_invocation, 
                           pprint.pformat(reduce_result_gen))
 
         if map_invocation.parent_invocation_id is not None:
@@ -848,16 +877,20 @@ class _StepProcessor(object):
 
         # Store result
 
-        _logger.debug("Storing reduction result: "
-                      "[%s] [%s]", 
-                      store_to_invocation.invocation_id,
-                      store_to_invocation.direction)
+        _logger.debug("Writing reduction result: [%s] [%s]", 
+                      store_to_invocation, store_to_invocation.direction)
+
+        _flow_logger.debug("+ Writing POST-REDUCE dataset from [%s] to [%s] "
+                           "and decrementing [%s].",
+                           message_parameters.invocation, store_to_invocation,
+                           decrement_invocation)
 
         dq = mr.models.kv.queues.dataset.DatasetQueue(
                 workflow, 
                 store_to_invocation,
                 mr.models.kv.queues.dataset.DT_POST_REDUCE)
 
+        i = 0
         for (k, v) in reduce_result_gen:
             data = {
                 # Pair
@@ -865,13 +898,17 @@ class _StepProcessor(object):
             }
 
             dq.add(data)
+            i += 1
+
+        assert i > 0, "No reduction results to store by [%s] to [%s]." % \
+                      (message_parameters.invocation, store_to_invocation)
 
         _logger.debug("We've posted the reduction result to invocation: "
-                      "[%s]", store_to_invocation.invocation_id)
+                      "[%s]", store_to_invocation)
 
         if decrement_invocation is not None:
             _logger.debug("Decrementing invocation: [%s] WAITING=(%d)",
-                          decrement_invocation.invocation_id,
+                          decrement_invocation,
                           decrement_invocation.mapped_waiting)
 
             # Decrement the "waiting" counter on the parent of the parent 
@@ -890,7 +927,7 @@ class _StepProcessor(object):
 
                 _logger.debug("Invocation [%s] mapped-waiting count has "
                               "dropped to (0), and will be reduced.", 
-                              decrement_invocation.invocation_id)
+                              decrement_invocation)
 
                 pusher = _get_pusher()
 
@@ -903,7 +940,7 @@ class _StepProcessor(object):
             else:
                 _logger.debug("Invocation [%s] mapped-waiting "
                               "count after REDUCE: (%d)", 
-                              decrement_invocation.invocation_id,
+                              decrement_invocation,
                               decrement_invocation.mapped_waiting)
         else:
             # We've reduced our way back up to the original request.
@@ -945,8 +982,11 @@ class _RequestReceiver(object):
         request = request.wait_for_change()
 
         _logger.debug("Reading result from: [%s] [%s]",
-                      message_parameters.invocation.invocation_id,
+                      message_parameters.invocation,
                       message_parameters.invocation.direction)
+
+        _flow_logger.debug("  Reading POST-REDUCE dataset as final result: "
+                           "[%s]", message_parameters.invocation)
 
         dq = mr.models.kv.queues.dataset.DatasetQueue(
                 message_parameters.workflow, 
@@ -960,11 +1000,57 @@ class _RequestReceiver(object):
             _logger.debug("Result to return for request:\n%s", 
                           pprint.pformat(result_pair_gen))
 
-        result_tokens = self.__result_writer.get_response_tokens(
-                            request.request_id, 
-                            result_pair_gen)
+        return self.__result_writer.get_response_tokens(
+                request.request_id, 
+                result_pair_gen)
 
-        return (request.request_id, result_tokens)
+    def package_request(self, workflow, job, step, handler, arguments, 
+                        context):
+        """Prepare an incoming request to be processed."""
+
+        invocation = mr.models.kv.invocation.Invocation(
+                        invocation_id=None,
+                        workflow_name=workflow.workflow_name,
+                        step_name=step.step_name,
+                        direction=mr.constants.D_MAP)
+
+        invocation.save()
+
+        _flow_logger.debug("+ Writing ARGUMENTS dataset for root invocation: "
+                           "[%s]", invocation)
+
+        dq = mr.models.kv.queues.dataset.DatasetQueue(
+                workflow, 
+                invocation,
+                mr.models.kv.queues.dataset.DT_ARGUMENTS)
+
+        for (k, v) in arguments:
+            data = {
+                'p': (k, v),
+            }
+
+            dq.add(data)
+
+        request = mr.models.kv.request.Request(
+                    request_id=None,
+                    workflow_name=workflow.workflow_name,
+                    job_name=job.job_name, 
+                    invocation_id=invocation.invocation_id,
+                    context=context)
+
+        request.save()
+
+        _logger.debug("Received request: [%s]", request)
+
+        message_parameters = mr.shared_types.QUEUE_MESSAGE_PARAMETERS_CLS(
+                                workflow=workflow,
+                                invocation=invocation,
+                                request=request,
+                                job=job, 
+                                step=step,
+                                handler=handler)
+
+        return message_parameters
 
     def process_request(self, message_parameters):
         self.__push_request(message_parameters)

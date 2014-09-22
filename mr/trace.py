@@ -298,6 +298,10 @@ class InvocationGraph(object):
         dot.node('W', 'Workflow (' + self.__workflow.workflow_name + ')')
         dot.node('J', 'Job (' + self.__job.job_name + ')')
 
+# TODO(dustin): Determine how to highlight mappings in red, ascending 
+#               reductions in blue, storage vectors as dotted lines, and self-
+#               reductions in something else (like dotted blue).
+
         dot.edge('Q', 'W', label="resolve workflow")
         dot.edge('W', 'J', label="resolve job from request in workflow")
 

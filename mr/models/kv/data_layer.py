@@ -2,7 +2,6 @@ import logging
 
 import etcd.client
 import etcd.exceptions
-import etcd.response
 
 import mr.config.etcd
 import mr.models.kv.common
@@ -118,20 +117,34 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         for child in response.node.children:
             yield child.key[len(root_key) + 1:]
 
-# TODO(dustin): We need to call node- and directory-specific wait methods.
-    def wait_for_node_change(self, identity, recursive=True):
+    def wait(self, identity):
         """Wait for a change to exactly one node (not recursive)."""
 
         key = self.__class__.flatten_identity(identity)
         
         try:
-            response = _etcd.node.wait(key, recursive=recursive)
-        except etcd.response.EmptyResponseError:
+            response = _etcd.node.wait(key)
+        except etcd.exceptions.EtcdWaitFaultException:
             raise KvWaitFaultException()
 
         return (
             response.node.modified_index,
             response.node.value
+        )
+
+    def directory_wait(self, identity, recursive=True):
+        """Wait for a change to exactly one node (not recursive)."""
+
+        key = self.__class__.flatten_identity(identity)
+        
+        try:
+            response = _etcd.directory.wait(key, recursive=recursive)
+        except etcd.exceptions.EtcdWaitFaultException, \
+               etcd.exceptions.EtcdEmptyResponseError:
+            raise KvWaitFaultException()
+
+        return (
+            response.node.modified_index,
         )
 
 
@@ -206,6 +219,7 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
         """Wait for a change to exactly one node (not recursive)."""
 
         try:
-            return self.__dl.wait_for_node_change(self.__root_identity)
-        except etcd.response.EmptyResponseError:
+            return self.__dl.directory_wait(self.__root_identity)
+        except etcd.exceptions.EtcdWaitFaultException, \
+               etcd.exceptions.EtcdEmptyResponseError:
             raise KvWaitFaultException()
