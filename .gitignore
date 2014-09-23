@@ -12,3 +12,4 @@
 .DS_Store
 /mr/resources/scripts/*.dot
 /mr/resources/scripts/*.png
+/push.sh

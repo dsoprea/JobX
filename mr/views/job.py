@@ -1,12 +1,15 @@
 import logging
 import flask
 import json
+import socket
 
 import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.handler
 import mr.workflow_manager
 import mr.job_engine
+
+_HOSTNAME = socket.gethostname()
 
 _logger = logging.getLogger(__name__)
 
@@ -84,6 +87,7 @@ def job_submit(workflow_name, job_name):
     raw_response = flask.jsonify(result)
     response = flask.make_response(raw_response)
     response.headers['X-MR-REQUEST-ID'] = request.request_id
+    response.headers['X-FULFILLED-BY'] = _HOSTNAME
 
     if exception_type is not None:
         response.headers['X-MR-EXCEPTION-TYPE'] = exception_type
