@@ -61,5 +61,6 @@ setuptools.setup(
             'mr/resources/scripts/mr_kv_workflow_delete',
             'mr/resources/scripts/mr_kv_workflow_get',
             'mr/resources/scripts/mr_start_gunicorn_dev',
+            'mr/resources/scripts/mr_start_gunicorn_prod',
       ],
 )
