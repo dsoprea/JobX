@@ -71,6 +71,8 @@ class Model(mr.models.kv.common.CommonKv):
         _logger.debug("Instantiating [%s]. IS_STORED=[%s]", 
                       self.__class__.__name__, is_stored)
 
+        self.__state = None
+
         self.__load_from_data(data, is_stored=is_stored)
 
 # TODO(dustin): We wrote the membership-comparison functions, but, as they
@@ -264,6 +266,8 @@ class Model(mr.models.kv.common.CommonKv):
     def atomic_update(cls, get_cb, set_cb, 
                       max_attempts=\
                         mr.config.kv.DEFAULT_ATOMIC_UPDATE_MAX_ATTEMPTS):
+# TODO(dustin): This functionality is now native to the client (the *node* 
+#               module).
         i = max_attempts
         while i > 0:
             obj = get_cb()
@@ -299,10 +303,15 @@ class Model(mr.models.kv.common.CommonKv):
                     self.get_data(),
                     check_against_state=state)
         else:
-            cls.__create_entity(
-                    identity, 
-                    self.get_data())
+            state = cls.__create_entity(
+                        identity, 
+                        self.get_data())
 
+            attributes = {
+                'state': str(state), 
+            }
+
+            self.__class__.__apply_attributes(self, attributes)
             self.__is_stored = True
 
         self.postsave()
@@ -341,6 +350,10 @@ class Model(mr.models.kv.common.CommonKv):
     def is_stored(self):
         return self.__is_stored
 
+    @property
+    def state_string(self):
+        return self.__state
+
     def get_identity(self):
         raise NotImplementedError()
 
@@ -366,18 +379,15 @@ class Model(mr.models.kv.common.CommonKv):
 
     @classmethod
     def __create_entity(cls, identity, data={}):
-#        identity = cls.flatten_identity(identity)
         parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Creating [%s] entity with parent [%s]: [%s]", 
                       cls.entity_class, parent, identity)
 
         try:
-            cls.__create_only_encoded(parent, identity, data)
+            return cls.__create_only_encoded(parent, identity, data)
         except etcd.exceptions.EtcdPreconditionException:
             pass
-        else:
-            return identity
 
         # Re-raising here rather than in the catch above makes for cleaner 
         # logging (no exception-from-exception messages).
@@ -387,7 +397,6 @@ class Model(mr.models.kv.common.CommonKv):
 
     @classmethod
     def __update_entity(cls, identity, data={}, check_against_state=None):
-#        identity = cls.flatten_identity(identity)
         parent = mr.config.kv.ENTITY_ROOT + (cls.entity_class,)
 
         _logger.debug("Updating [%s] entity with parent [%s]: [%s]", 
@@ -436,7 +445,7 @@ class Model(mr.models.kv.common.CommonKv):
 
         return (
             {
-                'state': state, 
+                'state': str(state), 
             },
             mr.config.kv.DECODER(value)
         )
@@ -466,7 +475,7 @@ class Model(mr.models.kv.common.CommonKv):
 
         return (
             {
-                'state': state, 
+                'state': str(state), 
             },
             mr.config.kv.DECODER(value)
         )

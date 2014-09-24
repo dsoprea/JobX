@@ -3,6 +3,7 @@ import logging
 import etcd.client
 import etcd.exceptions
 
+import mr.config
 import mr.config.etcd
 import mr.models.kv.common
 
@@ -14,12 +15,73 @@ _logger.setLevel(logging.INFO)
 _etcd = etcd.client.Client(**mr.config.etcd.CLIENT_CONFIG)
 
 
-class KvPreconditionException(Exception):
+class KvException(Exception):
     pass
 
 
-class KvWaitFaultException(Exception):
+class KvPreconditionException(KvException):
     pass
+
+
+class KvWaitFaultException(KvException):
+    pass
+
+
+class StateCapture(object):
+    """This class allows us to persist the current state of a set of models, 
+    and to later make sure that a set of models has reached or exceeded the 
+    original state. This allows us to be able to wait for propagation of KV 
+    updates across servers.
+
+    This requires some *etcd*-specific knowledge, whereby we know that states 
+    are monotonically-incrementing integers used for versioning. If we ever
+    change backends, this will have to be updated.
+    """
+
+    def __init__(self, states={}):
+        self.__states = states
+
+    def set(self, model):
+        assert model.state_string
+
+        self.__states[self.__get_key(model)] = int(model.state_string)
+
+    def get_collective_state(self):
+        return self.__states
+
+    def __get_key(self, model):
+        return (model.__class__.__name__, model.get_key())
+
+    def get_desired_state(self, model):
+        return self.__states[self.__get_key(model)]
+
+    def check_states(self, *models):
+        """Return a list of the models that have still not reached the current 
+        state.
+        """
+# TODO(dustin): We should just short-circuit and check the latest state-string 
+#               of the models against the latest state-string in the 
+#               dictionary, and include a list of the models that are supposed 
+#               to have state-strings greater than the latest state-string of 
+#               the models we've been given.
+        faulted = []
+        for model in models:
+            desired_state = self.__states[self.__get_key(model)]
+            current_state = int(model.state_string)
+
+            if mr.config.IS_DEBUG is True:
+                _logger.debug("%s(%s): Checking model desired state (%d) "
+                              "against current state (%d).", 
+                              model.__class__.__name__, str(model), 
+                              desired_state, current_state)
+
+            if desired_state > current_state:
+                _logger.debug("%s(%s): Model changes have not yet propagated.", 
+                              model.__class__.__name__, str(model))
+
+                faulted.append(model)
+
+        return faulted
 
 
 class DataLayerKv(mr.models.kv.common.CommonKv):
@@ -72,9 +134,11 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         key = self.__class__.flatten_identity(identity)
 
         try:
-            return _etcd.node.create_only(key, encoded_data)
+            response = _etcd.node.create_only(key, encoded_data)
         except etcd.exceptions.EtcdPreconditionException:
             pass
+        else:
+            return response.node.created_index
 
         # Re-raising here rather than in the catch above makes for cleaner 
         # logging (no exception-from-exception messages).
@@ -125,12 +189,14 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         try:
             response = _etcd.node.wait(key)
         except etcd.exceptions.EtcdWaitFaultException:
-            raise KvWaitFaultException()
+            pass
+        else:
+            return (
+                response.node.modified_index,
+                response.node.value
+            )
 
-        return (
-            response.node.modified_index,
-            response.node.value
-        )
+        raise KvWaitFaultException()
 
     def directory_wait(self, identity, recursive=True):
         """Wait for a change to exactly one node (not recursive)."""
@@ -139,12 +205,23 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         
         try:
             response = _etcd.directory.wait(key, recursive=recursive)
-        except etcd.exceptions.EtcdWaitFaultException, \
-               etcd.exceptions.EtcdEmptyResponseError:
-            raise KvWaitFaultException()
+        except etcd.exceptions.EtcdWaitFaultException:
+            pass
+        else:
+            return (
+                response.node.modified_index,
+            )
+
+        raise KvWaitFaultException()
+
+# TODO(dustin): Test and replace our existing implementation with this.
+    def atomic_update(self, identity, update_value_cb):
+        key = self.__class__.flatten_identity(identity)
+        response = etcd.node.atomic_update(key, update_value_cb)
 
         return (
             response.node.modified_index,
+            response.node.value
         )
 
 
@@ -175,7 +252,7 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
         return self.__root_identity
 
     def create(self):
-        self.__dl.directory_create_only(self.__root_identity)
+        self.__io.create()
 
     def exists(self, wait_for_state=None):
         return self.__dl.exists(
@@ -210,10 +287,10 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
         return (d for (k, d) in self.__dl.list(self.__root_identity))
 
     def delete_key(self, key):
-        return self.__dl.delete(self.__root_identity + (key,))
+        self.__io.pop(key)
 
     def delete(self):
-        return self.__dl.directory_delete(self.__root_identity)
+        self.__io.delete()
 
     def wait_for_change(self):
         """Wait for a change to exactly one node (not recursive)."""

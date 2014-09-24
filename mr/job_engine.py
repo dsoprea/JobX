@@ -130,7 +130,7 @@ class _QueuePusher(object):
             request=message_parameters.request,
             job=message_parameters.job,
             step=reduce_step,
-            handler=reduce_handler.handler_name)
+            handler=reduce_handler)
 
         assert reduce_parameters.handler is not None
 

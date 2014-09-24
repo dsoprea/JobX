@@ -1,7 +1,9 @@
 import logging
 import collections
 import pickle
+import time
 
+import mr.config.queue
 import mr.shared_types
 import mr.workflow_manager
 import mr.models.kv.request
@@ -9,17 +11,27 @@ import mr.models.kv.invocation
 import mr.models.kv.job
 import mr.models.kv.step
 import mr.models.kv.handler
+import mr.models.kv.data_layer
 
 _logger = logging.getLogger(__name__)
 
 # We can't prefix with an underscore because we require a symbol that matches 
 # the alleged name in order to pickle.
-QueueMessageV1 = collections.namedtuple(
-                    'QueueMessageV1', 
+
+#QueueMessageV1 = collections.namedtuple(
+#                    'QueueMessageV1', 
+#                    ['workflow_name',
+#                     'request_id', 
+#                     'invocation_id',
+#                     'step_name'])
+
+QueueMessageV2 = collections.namedtuple(
+                    'QueueMessageV2', 
                     ['workflow_name',
                      'request_id', 
                      'invocation_id',
-                     'step_name'])
+                     'step_name',
+                     'collective_state'])
 
 
 class _QueueDataPackager(object):
@@ -44,15 +56,36 @@ class _QueueDataPackagerV1(_QueueDataPackager):
     def decode(self, encoded_data):
         return pickle.loads(encoded_data)
 
-# Queue data format versions.
+
+class _QueueDataPackagerV2(_QueueDataPackager):
+    """Encoded/decoded the data going into the messages."""
+
+# TODO(dustin): Consider using protobuf. It's always faster if we know some 
+#               structure beforehand.
+
+    def encode(self, data):
+        assert issubclass(data.__class__, QueueMessageV2) is True
+
+        return pickle.dumps(data)
+
+    def decode(self, encoded_data):
+        return pickle.loads(encoded_data)
+
+## Queue data format versions.
+
+# Initial format.
 _QDF_1 = 1
 
+# Updated to store and check model state.
+_QDF_2 = 2
+
 _QUEUE_FORMAT_CLS_MAP = {
-    _QDF_1: _QueueDataPackagerV1(),
+#    _QDF_1: _QueueDataPackagerV1(),
+    _QDF_2: _QueueDataPackagerV2(),
 }
 
 # Set to the current format version.
-_CURRENT_QUEUE_FORMAT = _QDF_1
+_CURRENT_QUEUE_FORMAT = _QDF_2
 
 def _get_data_packager(format_version=_CURRENT_QUEUE_FORMAT):
     return _QUEUE_FORMAT_CLS_MAP[format_version]
@@ -113,20 +146,53 @@ class _QueueMessageFunnel(object):
 
         # This implements whatever the current message format is.
 
-        return QueueMessageV1(
-                workflow_name=workflow.workflow_name,
-                request_id=message_parameters.request.request_id,
-                invocation_id=message_parameters.invocation.invocation_id,
-                step_name=message_parameters.step.step_name)
+        if _CURRENT_QUEUE_FORMAT == _QDF_1:
+            return QueueMessageV1(
+                    workflow_name=workflow.workflow_name,
+                    request_id=message_parameters.request.request_id,
+                    invocation_id=message_parameters.invocation.invocation_id,
+                    step_name=message_parameters.step.step_name)
+        elif _CURRENT_QUEUE_FORMAT == _QDF_2:
+# TODO(dustin): We're assuming that we just need to check the states of the 
+#               "message parameter" models. If we have trouble with related 
+#               models not being able to catch up, then we might have to 
+#               consider one of the following:
+#
+#               1. Wait to dispatch queued jobs if we can somehow check that 
+#                  values have propagated (we might need an agent on all 
+#                  systems to post the highest received index to memcache or 
+#                  something).
+#
+#               2. Only dispatch queued messages to the same host that emitted 
+#                  them.
+#
+#               3. Every time a write is performed, push to Memcached, and make 
+#                  sure that everything we read is at the most recent state.
+#
+            sc = mr.models.kv.data_layer.StateCapture()
+            sc.set(workflow)
+            sc.set(message_parameters.request)
+            sc.set(message_parameters.invocation)
+            sc.set(message_parameters.job)
+            sc.set(message_parameters.step)
+            sc.set(message_parameters.handler)
+
+            return QueueMessageV2(
+                    workflow_name=workflow.workflow_name,
+                    request_id=message_parameters.request.request_id,
+                    invocation_id=message_parameters.invocation.invocation_id,
+                    step_name=message_parameters.step.step_name,
+                    collective_state=sc.get_collective_state())
+        else:
+            raise ValueError("Queue data format version is invalid for "
+                             "deflation: [%s]" % (format_version,))
 
     def inflate(self, format_version, deflated):
         """Reconstruct the battery of models and arguments that describes the 
         original request.
         """
 
-        if format_version == _QDF_1:
-            (workflow_name, request_id, invocation_id, step_name) = deflated
-
+        def load(workflow_name, request_id, invocation_id, step_name):
             wm = mr.workflow_manager.get_wm()
             managed_workflow = wm.get(workflow_name)
             workflow = managed_workflow.workflow
@@ -150,9 +216,75 @@ class _QueueMessageFunnel(object):
             else:
                 raise ValueError("Invocation direction [%s] invalid: %s" % 
                                  (invocation.direction, invocation))
+
+            return (workflow, request, invocation, job, step, handler)
+
+        if format_version == _QDF_1:
+            (workflow_name, request_id, invocation_id, step_name) = deflated
+            r = load(workflow_name, request_id, invocation_id, step_name)
+            (workflow, request, invocation, job, step, handler) = r
+        elif format_version == _QDF_2:
+            (workflow_name, request_id, invocation_id, step_name, collective_state) = deflated
+
+            r = load(workflow_name, request_id, invocation_id, step_name)
+            (workflow, request, invocation, job, step, handler) = r
+
+            # Ensure that the recovered models have reached the correct state 
+            # (updates have propagated to us). If not, wait until it happens.
+
+            sc = mr.models.kv.data_layer.StateCapture(collective_state)
+
+            faulted_list = None
+            checks_remaining = \
+                mr.config.queue.MODEL_STATE_PROPAGATION_MAX_CHECKS
+
+            while 1:
+                if faulted_list is None:
+                    faulted_list = sc.check_states(
+                                    workflow, 
+                                    request, 
+                                    invocation, 
+                                    job, 
+                                    step, 
+                                    handler)
+                else:
+                    if mr.config.IS_DEBUG is True:
+                        for faulted in faulted_list:
+                            old_state = int(faulted.state_string)
+                            faulted.refresh()
+                            new_state = int(faulted.state_string)
+
+                            _logger.debug("%s[%s]: (%d) => (%d) WAITING-ON=(%d)", 
+                                          faulted.__class__.__name__, 
+                                          str(faulted), old_state, new_state, 
+                                          sc.get_desired_state(faulted))
+
+                    faulted_list = sc.check_states(*faulted_list)
+
+                if not faulted_list:
+                    _logger.debug("The models described by the message have "
+                                  "reached an acceptable state.")
+                    break
+
+                if mr.config.IS_DEBUG is True:
+                    faulted_phrases = dict([(m.__class__.__name__, str(m)) 
+                                            for m 
+                                            in faulted_list])
+
+                    _logger.debug("One or more models are not at the latest "
+                                  "state. Waiting: %s", faulted_phrases)
+
+                checks_remaining -= 1
+                if checks_remaining <= 0:
+                    raise IOError("Data has not yet propagated for one or "
+                                  "more models, and we've given up: %s" % 
+                                  (faulted_list,))
+
+                time.sleep(mr.config.queue.\
+                            MODEL_STATE_PROPAGATION_CHECK_FAULT_DELAY_S)
         else:
-            raise ValueError("Queue data format version is invalid: [%s]" % 
-                             (format_version,))
+            raise ValueError("Queue data format version is invalid for "
+                             "inflation: [%s]" % (format_version,))
 
         border = '-' * 79
 

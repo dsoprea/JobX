@@ -61,7 +61,7 @@ class _NsqMessageHandler(nsq.message_handler.MessageHandler):
             self.__mh.process_message(message.body)
         except:
             # We don't want the message to reappear, later.
-            _logger.exception("There was an error while handling the MAP"
+            _logger.exception("There was an error while handling the MAP "
                               "message. Squashing it.")
         else:
             _logger.debug("MAP message processed successfully: [%s]", 
