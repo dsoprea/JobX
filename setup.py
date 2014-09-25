@@ -9,7 +9,7 @@ with open(os.path.join(_APP_PATH, 'resources', 'README.rst')) as f:
       long_description = f.read()
 
 with open(os.path.join(_APP_PATH, 'resources', 'requirements.txt')) as f:
-      install_requires = list(map(lambda s: s.strip(), f.readlines()))
+      install_requires = [s.strip() for s in f.readlines()]
 
 setuptools.setup(
       name='mapreduce',
