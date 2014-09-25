@@ -28,3 +28,7 @@ REQUIRED_CAP_NONE = 'none'
 # Image types.
 
 IT_PNG = 'png'
+
+# Cache types.
+
+CT_REDIS = 'redis'

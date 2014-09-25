@@ -1,3 +1,4 @@
+import os
 import json
 
 ENTITY_ROOT = ('entities',)
@@ -10,3 +11,5 @@ DEFAULT_ATOMIC_UPDATE_MAX_ATTEMPTS = 5
 
 ENCODER = json.dumps
 DECODER = json.loads
+
+IS_CACHED = bool(int(os.environ.get('MR_KV_CACHE', '0')))
