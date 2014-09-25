@@ -1,10 +1,13 @@
 import logging
+import sys
 
 import etcd.client
 import etcd.exceptions
 
 import mr.config
 import mr.config.etcd
+import mr.config.cache
+import mr.config.kv
 import mr.models.kv.common
 
 logging.getLogger('etcd').setLevel(logging.INFO)
@@ -85,12 +88,25 @@ class StateCapture(object):
 
 
 class DataLayerKv(mr.models.kv.common.CommonKv):
+    def __init__(self, *args, **kwargs):
+        super(DataLayerKv, self).__init__(*args, **kwargs)
+        
+        module = sys.modules[__name__]
+
+# TODO(dustin): Finish implementing KV-cache layer.
+#        if mr.config.kv.IS_CACHED is True:
+#            try:
+#                cache = getattr(module, '_cache')
+#            except AttributeError:
+#                cache = mr.config.cache.CACHE_CLS()
+#                setattr(module, '_cache', cache)
+
     def get(self, identity, wait_for_state=None):
-# TODO(dustin): Finish implementing wait_for_state. We might need to rename 
-#               from "state" to "version" so that we can admit that it's an 
-#               integer while still staying a bit decoupled from etcd.
         key = self.__class__.flatten_identity(identity)
-        response = _etcd.node.get(key)
+
+        # We ignore the wait_for_state parameter because we'll always get the 
+        # most-current result.
+        response = _etcd.node.get(key, force_consistent=True)
 
         return (
             response.node.modified_index,
@@ -98,13 +114,12 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         )
 
     def exists(self, identity, wait_for_state=None):
-# TODO(dustin): Finish implementing wait_for_state. We might need to rename 
-#               from "state" to "version" so that we can admit that it's an 
-#               integer while still staying a bit decoupled from etcd.
         key = self.__class__.flatten_identity(identity)
         
         try:
-            _etcd.node.get(key)
+            # We ignore the wait_for_state parameter because we'll always get 
+            # the most-current result.
+            _etcd.node.get(key, force_consistent=True)
         except KeyError:
             return False
         else:
