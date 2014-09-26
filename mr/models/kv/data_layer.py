@@ -315,8 +315,7 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
 
         try:
             return self.__dl.directory_wait(
-                    self.__root_identity, 
-                    force_consistent=True)
+                    self.__root_identity)
         except etcd.exceptions.EtcdWaitFaultException, \
                etcd.exceptions.EtcdEmptyResponseError:
             raise KvWaitFaultException()
