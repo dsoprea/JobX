@@ -202,7 +202,7 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         key = self.__class__.flatten_identity(identity)
         
         try:
-            response = _etcd.node.wait(key)
+            response = _etcd.node.wait(key, force_consistent=True)
         except etcd.exceptions.EtcdWaitFaultException:
             pass
         else:
@@ -219,7 +219,10 @@ class DataLayerKv(mr.models.kv.common.CommonKv):
         key = self.__class__.flatten_identity(identity)
         
         try:
-            response = _etcd.directory.wait(key, recursive=recursive)
+            response = _etcd.directory.wait(
+                        key, 
+                        recursive=recursive, 
+                        force_consistent=True)
         except etcd.exceptions.EtcdWaitFaultException:
             pass
         else:
@@ -311,7 +314,9 @@ class QueueLayerKv(mr.models.kv.common.CommonKv):
         """Wait for a change to exactly one node (not recursive)."""
 
         try:
-            return self.__dl.directory_wait(self.__root_identity)
+            return self.__dl.directory_wait(
+                    self.__root_identity, 
+                    force_consistent=True)
         except etcd.exceptions.EtcdWaitFaultException, \
                etcd.exceptions.EtcdEmptyResponseError:
             raise KvWaitFaultException()
