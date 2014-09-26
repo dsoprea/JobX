@@ -1,12 +1,12 @@
-**This project is still under active development, though largely finished. It is currently being tested in a production environment. The documentation is being incrementally completed. **
+**This project is still under active development, though largely finished. It is currently being tested in a production environment. The documentation is being incrementally completed.**
 
 ========
 Overview
 ========
 
-*JobX* is the world's first Python/Go-based MapReduce solution. The JobX project is entirely written in Go, as are the queue and KV clients. However, the actual distributed queue (*NSQ*) and distributed KV (*etcd*) are written in Go.
+*JobX* is a Python-based MapReduce solution. The JobX project is entirely written in Python, as are the queue and KV clients. However, the actual distributed queue (*NSQ*) and distributed KV (*etcd*) are written in Go.
 
-Many of the configuration options have reasonable defaults so that it is as simple as possible to experiment with JobX. All you need is a local instance of *NSQ* and *etcd*.
+Many of the configuration options have reasonable defaults so as to be as simple as possible to experiment with. All you need is a local instance of *NSQ* and *etcd*, which are, themselves, almost trivial to setup.
 
 
 ===============
@@ -103,6 +103,10 @@ Handler Management
 In order to both alleviate the annoyance of having to maintain current copies of the sourcecode for handlers on every job worker, we store the source-code to the KV. It is syntax-checked when loaded, the metadata header is parsed, the code is compiled, and the compiled object is committed to the "library". There is a sync script that can be sure to push updated handler code, ignored unchanged handlers, and remove handlers for which no file is found and no steps refer.
 
 The job workers will check the KV for updates approximately every ten-seconds, and merge them.
+
+
+Handler Examples
+================
 
 
 -----------------
@@ -212,6 +216,24 @@ invocation
 ----------
 
 This is the basic unit of operation. Every time a mapper or reducer is queued, it is given its own invocation record.
+
+
+Directly Reading KV Entities
+============================
+
+Where we want to read the "request" entity with the given ID under the "build" workflow::
+
+    $ etcdctl get entities/request/build/c1ef1a0d645e9a01fae9de1b7eca412fb14372c3 | python -m json.tool 
+    {
+        "context": {
+            "requester_ip": "127.0.0.1"
+        },
+        "done": true,
+        "failed_invocation_id": null,
+        "invocation_id": "3c7494eb9f521d39e8609733a6d3988100540abb",
+        "job_name": "obfuscate_for_clients",
+        "workflow_name": "build"
+    }
 
 
 -------

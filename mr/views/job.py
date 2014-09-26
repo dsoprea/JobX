@@ -48,8 +48,10 @@ def job_submit(workflow_name, job_name):
 
     arguments = _get_arguments_from_request()
 
+    remote_addr_header = mr.config.request.REMOTE_ADDR_HEADER
+
     context = {
-        'requester_ip': flask.request.remote_addr
+        'requester_ip': flask.request.environ[remote_addr_header]
     }
 
     rr = mr.job_engine.get_request_receiver()
