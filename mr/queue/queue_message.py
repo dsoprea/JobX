@@ -18,12 +18,12 @@ _logger = logging.getLogger(__name__)
 # We can't prefix with an underscore because we require a symbol that matches 
 # the alleged name in order to pickle.
 
-#QueueMessageV1 = collections.namedtuple(
-#                    'QueueMessageV1', 
-#                    ['workflow_name',
-#                     'request_id', 
-#                     'invocation_id',
-#                     'step_name'])
+QueueMessageV1 = collections.namedtuple(
+                    'QueueMessageV1', 
+                    ['workflow_name',
+                     'request_id', 
+                     'invocation_id',
+                     'step_name'])
 
 QueueMessageV2 = collections.namedtuple(
                     'QueueMessageV2', 
@@ -77,15 +77,19 @@ class _QueueDataPackagerV2(_QueueDataPackager):
 _QDF_1 = 1
 
 # Updated to store and check model state.
+#
+# UPDATE: This turned out to be unnecessary (now using *force_consistency* 
+#         option to *etcd*). A good solution needs to be handled at the model 
+#         level with help of a distributed Redis/memcached KV cache, anyway.
 _QDF_2 = 2
 
 _QUEUE_FORMAT_CLS_MAP = {
-#    _QDF_1: _QueueDataPackagerV1(),
+    _QDF_1: _QueueDataPackagerV1(),
     _QDF_2: _QueueDataPackagerV2(),
 }
 
 # Set to the current format version.
-_CURRENT_QUEUE_FORMAT = _QDF_2
+_CURRENT_QUEUE_FORMAT = _QDF_1
 
 def _get_data_packager(format_version=_CURRENT_QUEUE_FORMAT):
     return _QUEUE_FORMAT_CLS_MAP[format_version]
@@ -153,22 +157,6 @@ class _QueueMessageFunnel(object):
                     invocation_id=message_parameters.invocation.invocation_id,
                     step_name=message_parameters.step.step_name)
         elif _CURRENT_QUEUE_FORMAT == _QDF_2:
-# TODO(dustin): We're assuming that we just need to check the states of the 
-#               "message parameter" models. If we have trouble with related 
-#               models not being able to catch up, then we might have to 
-#               consider one of the following:
-#
-#               1. Wait to dispatch queued jobs if we can somehow check that 
-#                  values have propagated (we might need an agent on all 
-#                  systems to post the highest received index to memcache or 
-#                  something).
-#
-#               2. Only dispatch queued messages to the same host that emitted 
-#                  them.
-#
-#               3. Every time a write is performed, push to Memcached, and make 
-#                  sure that everything we read is at the most recent state.
-#
             sc = mr.models.kv.data_layer.StateCapture()
             sc.set(workflow)
             sc.set(message_parameters.request)
