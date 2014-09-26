@@ -36,6 +36,7 @@ setuptools.setup(
             'mr/resources/scripts/mr_draw_invocation_graph',
             'mr/resources/scripts/mr_get_invocation_flat_list',
             'mr/resources/scripts/mr_get_invocation_graph',
+            'mr/resources/scripts/mr_get_request_sessions',
             'mr/resources/scripts/mr_kv_handler_create',
             'mr/resources/scripts/mr_kv_handler_delete',
             'mr/resources/scripts/mr_kv_handler_get',
