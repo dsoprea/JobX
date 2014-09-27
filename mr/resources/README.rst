@@ -17,6 +17,8 @@ Installing JobX
 Dependencies
 ------------
 
+- *nginx*
+- *Python 2.7 (gevent is not Python 3 compatible)*
 - *go*::
 
     $ sudo apt-get install golang
@@ -28,17 +30,17 @@ Dependencies
     $ ./build
 
     $ sudo mkdir /var/lib/etcd
-    $ sudo bin/etcd -addr=127.0.0.1:4001 -peer-addr=127.0.0.1:7001 -data-dir=/var/lib/etcd -name=etcd1
+    $ sudo bin/etcd -addr=127.0.0.1:4001 -data-dir=/var/lib/etcd -name=etcd1
 
 - *nsq*::
 
     $ sudo apt-get install gpm
     $ mkdir ~/.go
     $ GOPATH=~/.go go get github.com/bitly/nsq/...
+
     $ sudo mkdir /var/lib/nsq
     $ cd /var/lib/nsq
-    $ sudo ~/.go/bin/nsqlookupd
-    $ sudo ~/.go/bin/nsqd --lookupd-tcp-address=127.0.0.1:4160
+    $ sudo ~/.go/bin/nsqd
 
 - Install Nginx.
 
@@ -75,9 +77,15 @@ Configuration
             }
     }
 
+2. Set the following two environment variables (either in your profile, or /etc/environment)::
+
+    export MR_ETCD_HOST=127.0.0.1
+    export MR_NSQD_HOSTS=127.0.0.1
+    export MR_WORKFLOW_NAMES=build
+
 2. Create workflow::
 
-    MR_ETCD_HOST=job1.domain MR_WORKFLOW_NAMES=build mr_kv_workflow_create build "Jobs that assist build and deployment."
+    mr_kv_workflow_create build "Jobs that assist build and deployment."
 
 3. Load handlers::
 
@@ -93,7 +101,7 @@ Configuration
 
 6. Start::
 
-    MR_ETCD_HOST=job1.domain MR_NSQD_HOSTS=job1.domain:4150,job2.domain:4150 MR_WORKFLOW_NAMES=build mr_start_gunicorn_dev 
+    mr_start_gunicorn_dev 
 
 
 ------------------
@@ -171,9 +179,9 @@ Distributed Queue Semantics
 The circulatory system of JobX is *bit.ly*'s NSQ platform, a very high-volume, and easy-to-deploy, distributed queue.
 
 
--------------------------------------
-Distributed Storage Backend Semantics
--------------------------------------
+------------------------
+Distributed KV Semantics
+------------------------
 
 All persistence is done into the *etcd* distributed, immediately-consistent KV. *etcd* is a component of *CoreOS*, and is also very easy to deploy. *etcd* stores key-value pairs, but the three-things that makes it unique are:
 
