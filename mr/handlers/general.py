@@ -159,7 +159,8 @@ class Handlers(object):
         return {
             'FS': fs,
             'SEP': _PATH_SEP,
-            'join': path_join,
+            'JOIN': path_join,
+            'LOG': logging.getLogger('MR_HANDLER').getChild(hd.name),
             '__name__': 'handler(' + hd.name + ')',
         }
 
