@@ -81,11 +81,13 @@ Configuration
 
     export MR_ETCD_HOST=127.0.0.1
     export MR_NSQD_HOSTS=127.0.0.1
-    export MR_WORKFLOW_NAMES=build
+    export MR_WORKFLOW_NAMES=test_workflow
 
 2. Create workflow::
 
-    mr_kv_workflow_create build "Jobs that assist build and deployment."
+    mr_kv_workflow_create test_workflow "Jobs that assist build and deployment."
+
+    Even though *test_workflow* is actually the default workflow name in the system, we explicitly specify it in the variables above so that it's clear how to for when you'll need to with your own workflow.
 
 3. Load handlers::
 
