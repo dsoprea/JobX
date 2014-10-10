@@ -3,6 +3,8 @@
 #MR_USE_FAKE_QUEUE=1 \
 #MR_FAKE_QUEUE_SPOOL_PATH=$CWD/../fake_spool_path \
 #MR_MULTITHREADED=0 \
+#MR_RESULT_WRITER_FQ_CLASS=mr.result_writers.file.FileResultWriter \
+#MR_RESULT_WRITER_FQ_CLASS=mr.result_writers.inline.InlineResultWriter \
 
 PYTHONPATH=test/scope \
 MR_WORKFLOW_SCOPE_FACTORY_FQ_CLASS=test_scope.WorkflowScopeFactory \

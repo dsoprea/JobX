@@ -14,7 +14,7 @@ import subprocess
 
 cmd = ['gunicorn', '-c', 'mr/resources/data/gunicorn_conf_dev.py', 'mr.app.main:app']
 
-p = subprocess.Popen(cmd)
+p = subprocess.Popen(cmd, env=os.environ)
 r = p.wait()
 if r != 0:
     raise EnvironmentError("Gunicorn launch failed.")

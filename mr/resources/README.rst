@@ -91,15 +91,15 @@ Configuration
 
 3. Load handlers::
 
-..write and load handlers
+   ..write and load handlers
 
 4. Load steps::
 
-..create step(s)
+   ..create step(s)
 
 5. Load jobs::
 
-..create job
+   ..create job
 
 6. Start::
 
@@ -197,35 +197,12 @@ All data is manipulated as entities, which are modeled heirarchically on to the 
 Entity Types
 ============
 
-workflow
---------
-
-This is the container of all of the other entities. You may have concurrent workflows operating on the same cluster that have their own jobs, steps, and handlers defined. They are *completely* isolated at the queueing and storage levels.
-
-job
----
-
-This defines the noun that you post requests to, and the initial step.
-
-step
-----
-
-This binds a mapper to a combiner (optional), and a combiner to a reducer.
-
-handler
--------
-
-This defines a single body of code for a mapper, combiner, or reducer.
-
-request
--------
-
-This identifies one received request, and the invocation of the first step.
-
-invocation
-----------
-
-This is the basic unit of operation. Every time a mapper or reducer is queued, it is given its own invocation record.
+- *workflow*: This is the container of all of the other entities. You may have concurrent workflows operating on the same cluster that have their own jobs, steps, and handlers defined. They are *completely* isolated at the queueing and storage levels.
+- *job*: This defines the noun that you post requests to, and the initial step.
+- *step*: This binds a mapper to a combiner (optional), and a combiner to a reducer.
+- *handler*: This defines a single body of code for a mapper, combiner, or reducer.
+- *request*: This identifies one received request, and the invocation of the first step.
+- *invocation*: This is the basic unit of operation. Every time a mapper or reducer is queued, it is given its own invocation record.
 
 
 Directly Reading KV Entities
@@ -238,7 +215,8 @@ Where we want to read the "request" entity with the given ID under the "build" w
         "context": {
             "requester_ip": "127.0.0.1"
         },
-        "done": true,
+        "is_done": true,
+        "is_blocking": true,
         "failed_invocation_id": null,
         "invocation_id": "3c7494eb9f521d39e8609733a6d3988100540abb",
         "job_name": "obfuscate_for_clients",

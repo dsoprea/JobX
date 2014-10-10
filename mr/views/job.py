@@ -32,10 +32,6 @@ def _get_arguments_from_request():
 
 @job_bp.route('/<workflow_name>/<job_name>', methods=['POST'])
 def job_submit(workflow_name, job_name):
-# TODO(dustin): We need to determine whether or not a terminated connection 
-#               will terminate the request. If so, we'll need to figure out 
-#               how to prevent it (maybe just a Gunicorn or Nginx change).
-
     # Use the workflow-manager in order to verify that we're managing this 
     # workflow.
     wm = mr.workflow_manager.get_wm()
@@ -50,14 +46,13 @@ def job_submit(workflow_name, job_name):
 
     remote_addr_header = mr.config.request.REMOTE_ADDR_HEADER
 
+    is_blocking = (flask.request.args.get('blocking', 'true') == 'true')
+
     context = {
         'requester_ip': flask.request.environ[remote_addr_header]
     }
 
     rr = mr.job_engine.get_request_receiver()
-    code = 200
-    exception_type = None
-    exception_message = None
 
     message_parameters = rr.package_request(
                             workflow, 
@@ -65,28 +60,51 @@ def job_submit(workflow_name, job_name):
                             step, 
                             handler, 
                             arguments, 
-                            context)
+                            context, 
+                            is_blocking=is_blocking)
 
     request = message_parameters.request
+    response = {}
 
     try:
-        result_tokens = rr.process_request(message_parameters)
+        rr.push_request(message_parameters)
 
-        result = {
-            'result': result_tokens,
-        }
+        if is_blocking is True:
+            result = rr.block_for_result(message_parameters)
 
-        code = 200
+            # Some result writers will only be used when blocking and others 
+            # when not blocking, and others in both. The latter will never
+            # have anything to return in the request-response, so it should
+            # always be None. In that case, we'll need to change it to an empty
+            # dictionary, since we like to return our results as dictionaries.
+            if result is None:
+                _logger.debug("The result writer returned None in blocking-"
+                              "mode. Kindly changing to an empty dictionary: "
+                              "%s", request)
+                result = {}
+        else:
+            result = None
+
     except Exception as e:
         _logger.exception("Request failed.")
-
-        result = {}
 
         code = 500
         exception_type = e.__class__.__name__
         exception_message = e.message
+    else:
+        code = 200
+        exception_type = None
+        exception_message = None
 
-    raw_response = flask.jsonify(result)
+        if is_blocking is True:
+            if issubclass(result.__class__, dict) is False:
+                raise ValueError("Result must be returned as a dictionary to "
+                                 "the blocking request-response: %s" % 
+                                 (request,))
+
+        response['result'] = result
+
+    raw_response = flask.jsonify(response)
     response = flask.make_response(raw_response)
     response.headers['X-MR-REQUEST-ID'] = request.request_id
     response.headers['X-FULFILLED-BY'] = _HOSTNAME
@@ -94,7 +112,5 @@ def job_submit(workflow_name, job_name):
     if exception_type is not None:
         response.headers['X-MR-EXCEPTION-TYPE'] = exception_type
         response.headers['X-MR-EXCEPTION-MESSAGE'] = exception_message
-
-    managed_workflow.cleanup_queue.add_request(request)
 
     return (response, code)

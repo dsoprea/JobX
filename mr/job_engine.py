@@ -559,7 +559,7 @@ class _StepProcessor(object):
             invocation.save()
 
             request.failed_invocation_id = invocation.invocation_id
-            request.done = True
+            request.is_done = True
             request.save()
 
             raise
@@ -649,7 +649,7 @@ class _StepProcessor(object):
             reduce_invocation.save()
 
             request.failed_invocation_id = reduce_invocation.invocation_id
-            request.done = True
+            request.is_done = True
             request.save()
 
             raise
@@ -945,11 +945,35 @@ class _StepProcessor(object):
         else:
             # We've reduced our way back up to the original request.
 
-            _logger.debug("No further parents. Marking request as "
-                          "complete: [%s]", request.request_id)
+            _logger.debug("No further parents on request: %s", request)
 
-            request.done = True
+            # If we're a non-blocking request, This will be the last 
+            # opportunity to handle the result before sending the request into 
+            # oblivion.
+            if request.is_blocking is False:
+                _logger.debug("Writing result for non-blocking request: %s", 
+                              request)
+
+                rr = get_request_receiver()
+                rr.render_result(request)
+
+            _logger.debug("Marking request as complete: [%s]", 
+                          request.request_id)
+
+            request.is_done = True
             request.save()
+
+            # We allow for the result to be written into the request response, 
+            # and *then* cleanup. However, if the request was non-blocking, 
+            # we'll queue it for cleanup, now.
+            if request.is_blocking is False:
+                _logger.debug("Request is non-blocking, so we'll clean it up "
+                              "immediately: %s", request)
+
+                wm = mr.workflow_manager.get_wm()
+                managed_workflow = wm.get(workflow.workflow_name)
+
+                managed_workflow.cleanup_queue.add_request(request)
 
 _sp = _StepProcessor()
 
@@ -968,29 +992,31 @@ class _RequestReceiver(object):
 
         self.__result_writer = result_writer_cls()
 
-    def __push_request(self, message_parameters):
+    def push_request(self, message_parameters):
         pusher = _get_pusher()
         pusher.queue_initial_map_step_from_parameters(message_parameters)
 
-    def __block_for_result(self, message_parameters):
-        request = message_parameters.request
+    def render_result(self, request):
+        """This is either called after a request has been posted (by the 
+        request handler, in a blocking request), or by the code that actually
+        posts the result (in a non-blocking request)."""
 
-        _logger.debug("Blocking on result for request: [%s]", 
-                      request.request_id)
+        workflow = mr.models.kv.workflow.get(request.workflow_name)
 
-        # The object is replaced with a newer one, when a change happens.
-        request = request.wait_for_change()
+        invocation = mr.models.kv.invocation.get(
+                        workflow, 
+                        request.invocation_id)
 
         _logger.debug("Reading result from: [%s] [%s]",
-                      message_parameters.invocation,
-                      message_parameters.invocation.direction)
+                      invocation,
+                      invocation.direction)
 
         _flow_logger.debug("  Reading POST-REDUCE dataset as final result: "
-                           "[%s]", message_parameters.invocation)
+                           "[%s]", invocation)
 
         dq = mr.models.kv.queues.dataset.DatasetQueue(
-                message_parameters.workflow, 
-                message_parameters.invocation, 
+                workflow, 
+                invocation, 
                 mr.models.kv.queues.dataset.DT_POST_REDUCE)
 
         result_pair_gen = (d['p'] for d in dq.list_data())
@@ -1000,12 +1026,37 @@ class _RequestReceiver(object):
             _logger.debug("Result to return for request:\n%s", 
                           pprint.pformat(result_pair_gen))
 
-        return self.__result_writer.get_response_tokens(
-                request.request_id, 
-                result_pair_gen)
+        result = self.__result_writer.render(
+                    request.request_id, 
+                    result_pair_gen)
+
+        # The result-writer can generate information that will be returned in 
+        # the request-response. However, this doesn't make sense if the request
+        # is asynchronous.
+        if result is not None and request.is_blocking is False:
+            raise ValueError("A result-writer can not return a value to a non-"
+                             "blocking request.")
+
+        return result
+
+    def block_for_result(self, message_parameters):
+        request = message_parameters.request
+
+        _logger.debug("Blocking on result for request: [%s]", request)
+
+        # The object is replaced with a newer one, when a change happens.
+        request = request.wait_for_change()
+
+        # We handle a result separately for a blocking versus a non-blocking 
+        # request, because we want to allow for a "result writer" that returns 
+        # the result in the request-response.
+
+        _logger.debug("Result is ready for blocking request: [%s]", request)
+
+        return self.render_result(request)
 
     def package_request(self, workflow, job, step, handler, arguments, 
-                        context):
+                        context, is_blocking=False):
         """Prepare an incoming request to be processed."""
 
         invocation = mr.models.kv.invocation.Invocation(
@@ -1036,7 +1087,8 @@ class _RequestReceiver(object):
                     workflow_name=workflow.workflow_name,
                     job_name=job.job_name, 
                     invocation_id=invocation.invocation_id,
-                    context=context)
+                    context=context,
+                    is_blocking=is_blocking)
 
         request.save()
 
@@ -1051,12 +1103,6 @@ class _RequestReceiver(object):
                                 handler=handler)
 
         return message_parameters
-
-    def process_request(self, message_parameters):
-        self.__push_request(message_parameters)
-        r = self.__block_for_result(message_parameters)
-
-        return r
 
 _request_receiver = None
 def get_request_receiver():

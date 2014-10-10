@@ -24,6 +24,8 @@ import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.models.kv.workflow
 
+_logger = logging.getLogger(__name__)
+
 app = flask.Flask(__name__, template_folder=mr.config.TEMPLATE_PATH)
 app.debug = mr.config.IS_DEBUG
 

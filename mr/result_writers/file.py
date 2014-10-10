@@ -18,7 +18,7 @@ class FileResultWriter(mr.result_writers.base.BaseResultWriter):
 
         self.__root_path = root_path
 
-    def get_response_tokens(self, request_id, result_pair_gen):
+    def render(self, request_id, result_pair_gen):
         if mr.config.result.FILE_WRITER_WRITE_AS_DIRECTORY is True:
             return self.__write_as_directory(request_id, result_pair_gen)
         else:
@@ -41,10 +41,6 @@ class FileResultWriter(mr.result_writers.base.BaseResultWriter):
             with open(filepath, 'wb') as f:
                 f.write(str(v))
 
-        return {
-            'path': path,
-        }
-
     def __write_as_file(self, request_id, result_pair_gen):
         filepath = os.path.join(self.__root_path, request_id)
 
@@ -55,8 +51,3 @@ class FileResultWriter(mr.result_writers.base.BaseResultWriter):
                     quoting=csv.QUOTE_NONE)
 
             cf.writerows(result_pair_gen)
-
-
-        return {
-            'filepath': filepath,
-        }

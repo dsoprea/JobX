@@ -1,5 +1,8 @@
 import logging
 import sys
+import os
+
+os.environ['ETCD_GEVENT'] = '1'
 
 import etcd.client
 import etcd.exceptions

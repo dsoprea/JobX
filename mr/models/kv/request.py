@@ -16,8 +16,9 @@ class Request(mr.models.kv.model.Model):
 
     # Collects the result from a step, whether it was mapped and then reduced, 
     # or whether it just performed work and returned.
-    done = mr.models.kv.model.Field(is_required=False, default_value=False)
+    is_done = mr.models.kv.model.Field(is_required=False, default_value=False)
     failed_invocation_id = mr.models.kv.model.Field(is_required=False)
+    is_blocking = mr.models.kv.model.Field(is_required=True)
 
     def get_identity(self):
         return (self.workflow_name, self.request_id)
