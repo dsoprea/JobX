@@ -20,9 +20,14 @@ yield MrConfigureToReturn()
 
 count = random.randrange(1, arg_dict['arg1'])
 
+i = 0
+
 while count > 1:
     interval = random.randrange(1, count)
     count -= interval
 
     #yield ('arg1', interval)
     yield (random.randrange(10), interval)
+    i += 1
+
+LOG.info("mapper(random_yield): Yield (%d) times.", i)

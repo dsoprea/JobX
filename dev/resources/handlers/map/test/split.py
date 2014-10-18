@@ -13,6 +13,10 @@ required_capability: none
 
 arg_dict = dict(arguments)
 
+#NOTIFY_EMAIL.info("Test message.")
+
+LOG.info("mapper(split): Top.")
+
 print("SET(map) 1")
 ctx.session_set('key1', 'xyz')
 print("SET(map) 2")
@@ -26,3 +30,5 @@ half = arg // 2
 
 yield (0, half)
 yield (1, half + (arg % 2))
+
+LOG.info("mapper(split): Split arguments into two sets.")

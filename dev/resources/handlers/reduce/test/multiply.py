@@ -15,6 +15,8 @@ print("GET(reduce): %s" % (ctx.session_get('key2'),))
 
 print("handler2 results: %s" % (results,))
 
+#EMAIL.info("Email notification.")
+
 tally = {}
 for k, value_list in results:
     for value in value_list:
@@ -23,4 +25,4 @@ for k, value_list in results:
         except KeyError:
             tally[k] = value
 
-return tally.items()
+return tally.iteritems()
