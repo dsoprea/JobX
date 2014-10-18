@@ -32,3 +32,7 @@ IT_PNG = 'png'
 # Cache types.
 
 CT_REDIS = 'redis'
+
+# Timestamp formats.
+
+DATETIME_STD = '%Y-%m-%d %H:%M:%S'

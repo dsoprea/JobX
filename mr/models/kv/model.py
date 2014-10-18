@@ -3,9 +3,11 @@ import json
 import random
 import hashlib
 import collections
+import datetime
 
 import etcd.exceptions
 
+import mr.constants
 import mr.config.kv
 import mr.models.kv.common
 import mr.models.kv.data_layer
@@ -58,6 +60,22 @@ class EnumField(Field):
         if value not in self.__values:
             raise ValidationError(name, "Not a valid enum value.")
 
+
+class TimestampField(Field):
+    def validate(self, name, value):
+        try:
+            datetime.datetime.strptime(value, mr.constants.DATETIME_STD)
+        except ValueError:
+            pass
+        else:
+            return
+
+        raise ValidationError(name, "Timestamp is not properly formatted.")
+
+    @property
+    def default_value(self):
+        return datetime.datetime.now().strftime(mr.constants.DATETIME_STD)
+
 _dl = mr.models.kv.data_layer.DataLayerKv()
 
 
@@ -74,35 +92,6 @@ class Model(mr.models.kv.common.CommonKv):
         self.__state = None
 
         self.__load_from_data(data, is_stored=is_stored)
-
-# TODO(dustin): We wrote the membership-comparison functions, but, as they
-#               would require that we hash based on the current contents of the
-#               object, it might be very expensive for memberships checks. So,
-#               for now we rely on the developer using their known of an entity
-#               to use the key-value or something, and not relying on using the
-#               whole object.
-#
-#    def __hash__(self):
-#        cls = self.__class__
-#        return hash(getattr(self, cls.key_field))
-#
-#    def __eq__(self, o):
-#        cls = self.__class__
-#        if o is None:
-#            return False
-#
-#        if cls != o.__class__:
-#            return False
-#
-#        key_field = cls.key_field
-#
-#        if getattr(o, key_field) != getattr(self, key_field):
-#            return False
-#
-#        return True
-#
-#    def __ne__(self, o):
-#        return not (self == o)
 
     def __load_from_data(self, data, is_stored=False):
         cls = self.__class__
@@ -176,7 +165,7 @@ class Model(mr.models.kv.common.CommonKv):
         cls = self.__class__
 
         truncated_data = {}
-        for k, v in self.get_data().items():
+        for k, v in self.get_data().iteritems():
             if issubclass(v.__class__, mr.compat.basestring) is True and \
                len(v) > mr.config.kv.REPR_DATA_TRUNCATE_WIDTH:
                 v = v[:mr.config.kv.REPR_DATA_TRUNCATE_WIDTH] + '...'
@@ -191,7 +180,7 @@ class Model(mr.models.kv.common.CommonKv):
 
         data = dict([(k, v) 
                      for k, v 
-                     in self.get_data().items() 
+                     in self.get_data().iteritems() 
                      if k != cls.key_field and \
                         k not in ignore_keys])
 
@@ -358,7 +347,7 @@ class Model(mr.models.kv.common.CommonKv):
         raise NotImplementedError()
 
     @classmethod
-    def __build_from_data(cls, key, data):
+    def __build_from_stored_data(cls, key, data):
         data[cls.key_field] = key
         return cls(is_stored=True, **data)
 
@@ -372,7 +361,7 @@ class Model(mr.models.kv.common.CommonKv):
     def get_and_build(cls, identity, key):
         (attributes, data) = cls.__get_entity(identity)
 
-        obj = cls.__build_from_data(key, data)
+        obj = cls.__build_from_stored_data(key, data)
         cls.__apply_attributes(obj, attributes)
 
         return obj
@@ -462,7 +451,7 @@ class Model(mr.models.kv.common.CommonKv):
 
         (attributes, data) = cls.__wait_encoded(parent, identity)
 
-        obj = cls.__build_from_data(key, data)
+        obj = cls.__build_from_stored_data(key, data)
         cls.__apply_attributes(obj, attributes)
 
         return obj
@@ -508,7 +497,7 @@ class Model(mr.models.kv.common.CommonKv):
                       cls.entity_class, parent)
 
         for key, data in cls.__list_encoded(parent, args):
-            yield cls.__build_from_data(key, data)
+            yield cls.__build_from_stored_data(key, data)
 
     @classmethod
     def __list_encoded(cls, parent, identity_prefix):

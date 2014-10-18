@@ -9,13 +9,10 @@ class Invocation(mr.models.kv.model.Model):
     key_field = 'invocation_id'
 
     invocation_id = mr.models.kv.model.Field()
+    created_timestamp = mr.models.kv.model.TimestampField()
     workflow_name = mr.models.kv.model.Field()
     parent_invocation_id = mr.models.kv.model.Field(is_required=False)
     step_name = mr.models.kv.model.Field()
-
-    # For a mapping, this describes arguments. For a reduction or action step, 
-    # this describes a list of one item: the result.
-#    arguments = mr.models.kv.model.Field(is_required=False)
 
     # The mapper will set this before it yields any downstream steps. Not set 
     # for other step-types.

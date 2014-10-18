@@ -186,7 +186,7 @@ class RequestCleanup(object):
 
         # Delete the invocations.
 
-        for (invocation_id, invocation) in invocations.items():
+        for (invocation_id, invocation) in invocations.iteritems():
             self.__prune_invocation(invocation)
 
         # Now, delete the request.

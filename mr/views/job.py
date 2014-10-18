@@ -26,7 +26,7 @@ def _get_arguments_from_request():
     assert issubclass(request_data['arguments'].__class__, dict) is True
 
     try:
-        return request_data['arguments'].items()
+        return request_data['arguments'].iteritems()
     except KeyError:
         raise ValueError("No arguments given (2)")
 
@@ -43,6 +43,7 @@ def job_submit(workflow_name, job_name):
     handler = mr.models.kv.handler.get(workflow, step.map_handler_name)
 
     arguments = _get_arguments_from_request()
+    arguments = list(arguments)
 
     remote_addr_header = mr.config.request.REMOTE_ADDR_HEADER
 
@@ -64,6 +65,10 @@ def job_submit(workflow_name, job_name):
                             is_blocking=is_blocking)
 
     request = message_parameters.request
+
+    _logger.debug("Pushing request [%s] with initial step [%s] and invocation [%s] for mapper "
+                  "[%s].", request, step, message_parameters.invocation, handler)
+
     response = {}
 
     try:

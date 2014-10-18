@@ -61,7 +61,7 @@ class KvLibraryAdapter(LibraryAdapter):
                  [name for (name, cls_) in handler_info.argument_spec],
                  handler_info.version)
                 for (name, handler_info)
-                in self.__handlers.items())
+                in self.__handlers.iteritems())
 
     def get_handler(self, handler_name):
         """Return a handler-definition object."""
