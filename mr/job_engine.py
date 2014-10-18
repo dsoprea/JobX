@@ -34,6 +34,7 @@ import mr.shared_types
 import mr.constants
 import mr.handlers.scope
 import mr.utility
+import mr.log
 
 _logger = logging.getLogger(__name__)
 _flow_logger = _logger.getChild('flow')
@@ -484,7 +485,8 @@ class _StepProcessor(object):
         invocation = message_parameters.invocation
         workflow = message_parameters.workflow
         
-        _logger.debug("Processing MAP: [%s]", invocation)
+        _logger.debug("Processing MAP: [%s] [%s]", 
+                      invocation, invocation.created_timestamp)
 
         try:
             ## Call the handler.
@@ -554,8 +556,16 @@ class _StepProcessor(object):
             _logger.exception("Exception while processing MAP under request: "
                               "%s", request)
 
+            traceback_text = traceback.format_exc()
+
+            notify = mr.log.get_notify()
+            notify.exception("Mapper invocation [%s] under request [%s] "
+                             "failed.  HANDLER=[%s]\n%s", 
+                             invocation.invocation_id, request.request_id, 
+                             step.map_handler_name, traceback_text)
+
 # TODO(dustin): We might have to remove the chain of invocations, on error.
-            invocation.error = traceback.format_exc()
+            invocation.error = traceback_text
             invocation.save()
 
             request.failed_invocation_id = invocation.invocation_id
@@ -644,8 +654,16 @@ class _StepProcessor(object):
             _logger.exception("Exception while processing REDUCE under "
                               "request: %s", request)
 
+            traceback_text = traceback.format_exc()
+
+            notify = mr.log.get_notify()
+            notify.exception("Reducer invocation [%s] under request [%s] "
+                             "failed. HANDLER=[%s]\n%s", 
+                             invocation.invocation_id, request.request_id, 
+                             step.reducer_handler_name, traceback_text)
+
 # TODO(dustin): We might have to remove the chain of invocations, on error.
-            reduce_invocation.error = traceback.format_exc()
+            reduce_invocation.error = traceback_text
             reduce_invocation.save()
 
             request.failed_invocation_id = reduce_invocation.invocation_id
@@ -737,9 +755,20 @@ class _StepProcessor(object):
 
         results_gen = (data['p'] for data in results_gen)
 
-        # NOTE: We are sending in a stream of pairs, because grouping might be 
-        #       a very costly and unnecessary operation (depending on set 
-        #       size). We'd rather leave it to the reducer.
+        # Now group ("merge") the values for common keys. Since the individual 
+        # reducers and mappers can't be required to yield pairs sorted by key, 
+        # this will have a high [memory] cost for large sets, and requires us 
+        # to run the generators.
+
+        grouped_results = {}
+        for (k, v) in results_gen:
+            try:
+                grouped_results[k].append(v)
+            except KeyError:
+                grouped_results[k] = [v]
+
+        # We're not in Python3, so we have to use <dict>.iteritems().
+        grouped_results_gen = grouped_results.iteritems()
 
         # Disable session writes because there's no purpose by the time we get 
         # to the reducer.
@@ -749,7 +778,7 @@ class _StepProcessor(object):
                         allow_session_writes=False)
 
         handler_arguments = {
-            'results': results_gen,
+            'results': grouped_results_gen,
             'ctx': handler_ctx,
         }
 

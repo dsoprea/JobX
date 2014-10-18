@@ -6,6 +6,7 @@ import collections
 import time
 import threading
 
+import mr.config.log
 import mr.models.kv.handler
 import mr.models.kv.workflow
 import mr.handlers.utility
@@ -156,13 +157,30 @@ class Handlers(object):
         def path_join(*args):
             return _PATH_SEP.join(args)
 
-        return {
+        handler_log = logging.getLogger('MR_HANDLER')
+        raw_log = handler_log.getChild('RAW').getChild(hd.name)
+
+        scope = {
             'FS': fs,
             'SEP': _PATH_SEP,
             'JOIN': path_join,
-            'LOG': logging.getLogger('MR_HANDLER').getChild(hd.name),
+            'LOG': raw_log,
             '__name__': 'handler(' + hd.name + ')',
         }
+
+        if mr.config.log.DO_HOOK_EMAIL is True:
+            _logger.info("Configuring email notifications.")
+            scope['NOTIFY_EMAIL'] = handler_log.getChild('EMAIL').getChild(hd.name)
+        else:
+            _logger.warning("Email notifications are not configured.")
+            
+        if mr.config.log.DO_HOOK_HTTP is True:
+            _logger.info("Configuring HTTP notifications.")
+            scope['NOTIFY_HTTP'] = handler_log.getChild('HTTP').getChild(hd.name)
+        else:
+            _logger.info("HTTP notifications are not configured.")
+
+        return scope
 
     def __compile_handler(self, hd, arg_names, scope=None):
         if scope is None:
