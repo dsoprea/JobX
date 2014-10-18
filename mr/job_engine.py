@@ -704,7 +704,7 @@ class _StepProcessor(object):
                 # that we branched to.
 
                 _flow_logger.debug("  Reading constituent POST-REDUCE result "
-                                   "for parent [%s] by [%s] from: [%s]", 
+                                   "under parent [%s] for reducer [%s] from mapper: [%s]", 
                                    map_invocation, 
                                    message_parameters.invocation, 
                                    mapped_invocation)
@@ -736,6 +736,10 @@ class _StepProcessor(object):
             print('')
 
         results_gen = (data['p'] for data in results_gen)
+
+        # NOTE: We are sending in a stream of pairs, because grouping might be 
+        #       a very costly and unnecessary operation (depending on set 
+        #       size). We'd rather leave it to the reducer.
 
         # Disable session writes because there's no purpose by the time we get 
         # to the reducer.
