@@ -1,21 +1,22 @@
 **This project is still under active development, though largely finished. It is currently being tested in a production environment. The documentation is being incrementally completed.**
 
-========
+
+--------
 Overview
-========
+--------
 
 *JobX* is a Python-based MapReduce solution. The JobX project is entirely written in Python, as are the queue and KV clients. However, the actual distributed queue (*NSQ*) and distributed KV (*etcd*) are written in Go.
 
 Many of the configuration options have reasonable defaults so as to be as simple as possible to experiment with. All you need is a local instance of *NSQ* and *etcd*, which are, themselves, almost trivial to setup.
 
 
-===============
+---------------
 Installing JobX
-===============
+---------------
 
-------------
+
 Dependencies
-------------
+============
 
 - *nginx*
 - *Python 2.7 (gevent is not Python 3 compatible)*
@@ -44,9 +45,9 @@ Dependencies
 
 - Install Nginx.
 
--------------
+
 Configuration
--------------
+=============
 
 1. Configure Nginx::
 
@@ -115,22 +116,16 @@ In order to both alleviate the annoyance of having to maintain current copies of
 The job workers will check the KV for updates approximately every ten-seconds, and merge them.
 
 
-Handler Examples
-================
-
-
------------------
 Shared Filesystem
------------------
+=================
 
 There is general support for a distributed, shared filesystem between the handlers of the same workflow. The filesystem is for general use, such as prepopulating it with assets that are required for your operations, using it as a workspace for temporary files, as well as using it to deposit final artifacts, to be picked-up upon completion of the job. Any supported filesystem will share a common interface. Currently, there is only support for Tahoe LAFS.
 
 You must define environment variables with the required parameters to enable this functionality.
 
 
---------
 Sessions
---------
+========
 
 When it comes to flow, mappers receive the data (key-value pairs), first. If this data represents actual arguments, then your logic might determine what comes next dynamically. Your mapper may branch to downstream mappers in order to collect data that you require to perform your primary task, and your reducer may then act on it. However, the reducer may need access to some of the same data that your mapper had. Unfortunately, where the mapper receives data that it is free to slice and reorganize, the reducer only receives a collection of results from mappers that yielded data. Unless the mappers forwarded data down to the eventual result (potentially being of no actual use intermediary mapper), the reducer may need some of that original information to complete its task.
 
@@ -139,32 +134,28 @@ This is what *sessions* are for. Every mapper invocation is given a private, dur
 There are tools available to debug sessions, if needed.
 
 
----------------
 Scope Factories
----------------
+===============
 
 *Scope factories* are a mechanism that allow you to inject variables into the global scope of each handler. A different scope factory can be defined for each workflow. Though you can inject the same variables into the scope of every handler [in the same workflow], the scope-factory will also receive the name of the handler. This allows you to provide sensitive information to some, but not all, handlers.
 
 You must define environment variables with the required parameters to enable this functionality.
 
 
-------------
 Capabilities
-------------
+============
 
 *Capabilities* are classifications that you may define to control how jobs are assigned to workers. Every worker declares a list of offered capabality classifications, and every handler declares a "required capability" classification. You may use this functionality to only route operations with handlers that invoke licensed functionality to only those workers that have been adequately equipped.
 
 
--------------------
 Language Processors
--------------------
+===================
 
 Handlers can be defined in any language, as long as there's a processor defined for it that can dispatch the code to be executed, and can yield the data that is returned (all handlers are generators).
 
 
---------------
 Result Writers
---------------
+==============
 
 A *result-writer* manages how results are transmitted, and will influence what you receive in the HTTP response.
 
@@ -172,6 +163,26 @@ Currently, there are two:
 
 - *inline*: Return the data within the response. **This is the default.**
 - *file*: Store to a local directory.
+
+
+Notifications
+=============
+
+
+Email Notifications
+-------------------
+
+
+HTTP Notifications
+------------------
+
+
+Uncaught Exceptions
+-------------------
+
+
+Handler Examples
+================
 
 
 ---------------------------
@@ -245,14 +256,14 @@ Dumping the Invocation Tree and Data from the Command-Line
 ==========================================================
 
 
-========
+--------
 Advanced
-========
+--------
 
---------------------
+
 KV Queue Collections
---------------------
+====================
 
--------------------
+
 KV Tree Collections
--------------------
+===================
