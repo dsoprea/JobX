@@ -14,15 +14,32 @@ class _ExceptionNotifyWrapper(object):
     def exception(self, *args, **kwargs):
         if mr.config.log.DO_HOOK_EMAIL is True or \
            mr.config.log.DO_HOOK_HTTP is True:
+            is_success = False
+
             if mr.config.log.DO_HOOK_EMAIL is True:
-                mr.config.log.handler_logger_email.exception(*args, **kwargs)
+                try:
+                    mr.config.log.handler_logger_email.exception(*args, **kwargs)
+                except:
+                    _logger.exception("Email exception notify failed.")
+                else:
+                    is_success = True                    
 
             if mr.config.log.DO_HOOK_HTTP is True:
-                mr.config.log.handler_logger_http.exception(*args, **kwargs)
+                # We don't believe that this will actually fail due to non-
+                # resolution/etc.
+
+                try:
+                    mr.config.log.handler_logger_http.exception(*args, **kwargs)
+                except:
+                    _logger.exception("HTTP exception notify failed.")
+                else:
+                    is_success = True
+
+            if is_success is False:
+                raise SystemError("Could not send exception notification.")
         else:
             _logger.warning("Exception notifications aren't hooked.")
             _logger.exception(*args, **kwargs)
-
 
 _notify = None
 def get_notify():
