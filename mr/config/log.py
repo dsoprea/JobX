@@ -56,6 +56,10 @@ def _configure_email():
     else:
         mailhost = (hostname, int(port))
 
+    logger.info("Configuring SMTPHandler: HOST=[%s] FROM=[%s] TO=[%s] "
+                "SUBJECT=[%s] CREDS=[%s] SECURE=[%s]",
+                mailhost, from_email, to_email, subject, credentials, secure)
+
     sh = logging.handlers.SMTPHandler(
             mailhost, 
             from_email, 
@@ -72,14 +76,25 @@ if DO_HOOK_EMAIL is True:
     _configure_email()
 
 def _configure_http():
-    hostname = os.environ['MR_LOG_HTTP_HOSTNAME']
-    path = os.environ['MR_LOG_HTTP_PATH']
+    hostname = os.environ.get('MR_LOG_HTTP_HOSTNAME', 'localhost')
+    path = os.environ.get('MR_LOG_HTTP_PATH', '/')
+    
+    try:
+        port = int(os.environ['MR_LOG_HTTP_PORT'])
+    except KeyError:
+        pass
+    else:
+        hostname += ':' + str(port)
+    
     verb = os.environ.get('MR_LOG_HTTP_VERB', 'POST')
 
-    hh = logging.handlers.HTTPHandler(host, path, method=verb)
+    logger.info("Configuring HTTPHandler: HOST=[%s] PATH=[%s] VERB=[%s]", 
+                hostname, path, verb)
+
+    hh = logging.handlers.HTTPHandler(hostname, path, method=verb)
     hh.setFormatter(_FORMATTER)
 
-    handler_logger_http.addHandler(sh)
+    handler_logger_http.addHandler(hh)
 
 DO_HOOK_HTTP = bool(int(os.environ.get('MR_LOG_HTTP_HOOK', '0')))
 if DO_HOOK_HTTP is True:
