@@ -1,4 +1,5 @@
 import logging
+import traceback
 
 import mr.config.log
 
@@ -11,14 +12,19 @@ handler_logger_http = _handler_logger.getChild('HTTP')
 
 
 class _ExceptionNotifyWrapper(object):
-    def exception(self, *args, **kwargs):
+    def exception(self, message, *args):
+        message = message % args
+
+        # The HTTPHandler won't transfer the traceback.
+        message_with_exception = message + "\n\n" + traceback.format_exc()
+
         if mr.config.log.DO_HOOK_EMAIL is True or \
            mr.config.log.DO_HOOK_HTTP is True:
             is_success = False
 
             if mr.config.log.DO_HOOK_EMAIL is True:
                 try:
-                    mr.config.log.handler_logger_email.exception(*args, **kwargs)
+                    mr.config.log.handler_logger_email.exception(message)
                 except:
                     _logger.exception("Email exception notify failed.")
                 else:
@@ -29,7 +35,7 @@ class _ExceptionNotifyWrapper(object):
                 # resolution/etc.
 
                 try:
-                    mr.config.log.handler_logger_http.exception(*args, **kwargs)
+                    mr.config.log.handler_logger_http.exception(message_with_exception)
                 except:
                     _logger.exception("HTTP exception notify failed.")
                 else:

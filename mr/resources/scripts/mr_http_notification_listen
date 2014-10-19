@@ -1,0 +1,53 @@
+#!/usr/bin/env python2.7
+
+import urlparse
+import datetime
+import os
+
+import BaseHTTPServer
+import SocketServer
+
+_HOSTNAME = os.environ.get('HTTP_LISTEN_HOSTNAME', 'localhost')
+_PORT = int(os.environ.get('HTTP_LISTEN_PORT', '1234'))
+_FMT_DATETIME_STD = '%Y-%m-%d %H:%M:%S'
+
+
+class TCPServerReusableSocket(SocketServer.TCPServer):
+    allow_reuse_address = True
+
+
+class HookedHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def log_request(code=None, size=None):
+        pass
+
+    def __send_headers(self):
+        self.send_response(200)
+        self.send_header("Content-type", 'text/plain')
+        self.end_headers()
+
+    def __print_entry(self, entry):
+        created_epoch = float(entry['created'][0])
+        when_dt = datetime.datetime.fromtimestamp(created_epoch)
+        timestamp_phrase = when_dt.strftime(_FMT_DATETIME_STD)
+        where_name = entry['name'][0][:40]
+        level_name = entry['levelname'][0]
+        
+        message = entry['msg'][0]
+
+        print('%s  %40s  %9s  %s' % 
+              (timestamp_phrase, where_name, level_name, message))
+
+    def do_POST(self):
+        self.__send_headers()
+
+        length = int(self.headers['content-length'])
+        data_raw = self.rfile.read(length)
+        data = urlparse.parse_qs(data_raw)
+
+        self.__print_entry(data)
+
+httpd = TCPServerReusableSocket(
+            (_HOSTNAME, _PORT), 
+            HookedHTTPRequestHandler)
+
+httpd.serve_forever()

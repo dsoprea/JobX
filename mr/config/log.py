@@ -13,15 +13,32 @@ sh = logging.StreamHandler()
 sh.setFormatter(_FORMATTER)
 logger.addHandler(sh)
 
-sh2 = logging.handlers.SysLogHandler()
-sh2.setFormatter(_FORMATTER)
-logger.addHandler(sh2)
-
 handler_logger = logging.getLogger('MR_HANDLER')
 
 handler_logger_raw = handler_logger.getChild('RAW')
 handler_logger_email = handler_logger.getChild('EMAIL')
 handler_logger_http = handler_logger.getChild('HTTP')
+
+if mr.config.IS_DEBUG is True:
+    fh = logging.FileHandler('/tmp/mr.flow.log')
+    fh.setFormatter(_FORMATTER)
+
+    flow_logger = logging.getLogger('mr.job_engine.flow')
+    flow_logger.addHandler(fh)
+    flow_logger.setLevel(logging.DEBUG)
+
+    logger.setLevel(logging.DEBUG)
+else:
+    logger.setLevel(logging.INFO)
+
+is_handler_debug = bool(int(os.environ.get('MR_HANDLER_DEBUG', '0')))
+if is_handler_debug is True:
+    fh = logging.FileHandler('/tmp/mr.handler.log')
+    fh.setFormatter(_FORMATTER)
+    handler_logger.addHandler(fh)
+
+    handler_log_level = os.environ.get('MR_HANDLER_LOG_LEVEL', 'DEBUG')
+    handler_logger.setLevel(getattr(logging, handler_log_level))
 
 def _configure_email():
     hostname = os.environ.get('MR_LOG_EMAIL_HOSTNAME', 'localhost')
@@ -86,37 +103,15 @@ def _configure_http():
     else:
         hostname += ':' + str(port)
     
-    verb = os.environ.get('MR_LOG_HTTP_VERB', 'POST')
+    verb = os.environ.get('MR_LOG_HTTP_VERB', 'post')
 
     logger.info("Configuring HTTPHandler: HOST=[%s] PATH=[%s] VERB=[%s]", 
                 hostname, path, verb)
 
     hh = logging.handlers.HTTPHandler(hostname, path, method=verb)
-    hh.setFormatter(_FORMATTER)
-
     handler_logger_http.addHandler(hh)
+    handler_logger_http.debug("HTTP logging configured.")
 
 DO_HOOK_HTTP = bool(int(os.environ.get('MR_LOG_HTTP_HOOK', '0')))
 if DO_HOOK_HTTP is True:
     _configure_http()
-
-if mr.config.IS_DEBUG is True:
-    fh = logging.FileHandler('/tmp/mr.flow.log')
-    fh.setFormatter(_FORMATTER)
-
-    flow_logger = logging.getLogger('mr.job_engine.flow')
-    flow_logger.addHandler(fh)
-    flow_logger.setLevel(logging.DEBUG)
-
-    logger.setLevel(logging.DEBUG)
-else:
-    logger.setLevel(logging.INFO)
-
-is_handler_debug = bool(int(os.environ.get('MR_HANDLER_DEBUG', '0')))
-if is_handler_debug is True:
-    fh = logging.FileHandler('/tmp/mr.handler.log')
-    fh.setFormatter(_FORMATTER)
-    handler_logger.addHandler(fh)
-
-    handler_log_level = os.environ.get('MR_HANDLER_LOG_LEVEL', 'DEBUG')
-    handler_logger.setLevel(getattr(logging, handler_log_level))

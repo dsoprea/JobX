@@ -176,6 +176,8 @@ Email Notifications
 HTTP Notifications
 ------------------
 
+- The tool for listening to HTTP notifications.
+
 
 Uncaught Exceptions
 -------------------
