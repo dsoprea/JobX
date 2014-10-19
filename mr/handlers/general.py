@@ -171,14 +171,10 @@ class Handlers(object):
         if mr.config.log.DO_HOOK_EMAIL is True:
             _logger.info("Configuring email notifications.")
             scope['NOTIFY_EMAIL'] = handler_log.getChild('EMAIL').getChild(hd.name)
-        else:
-            _logger.warning("Email notifications are not configured.")
             
         if mr.config.log.DO_HOOK_HTTP is True:
             _logger.info("Configuring HTTP notifications.")
             scope['NOTIFY_HTTP'] = handler_log.getChild('HTTP').getChild(hd.name)
-        else:
-            _logger.info("HTTP notifications are not configured.")
 
         return scope
 
