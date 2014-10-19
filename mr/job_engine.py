@@ -556,21 +556,30 @@ class _StepProcessor(object):
             _logger.exception("Exception while processing MAP under request: "
                               "%s", request)
 
-            traceback_text = traceback.format_exc()
-
-            notify = mr.log.get_notify()
-            notify.exception("Mapper invocation [%s] under request [%s] "
-                             "failed.  HANDLER=[%s]\n%s", 
-                             invocation.invocation_id, request.request_id, 
-                             step.map_handler_name, traceback_text)
-
-# TODO(dustin): We might have to remove the chain of invocations, on error.
-            invocation.error = traceback_text
+            invocation.error = traceback.format_exc()
             invocation.save()
+
+            # Formally mark the request as failed but finished. In the event 
+            # that request-cleanup is disabled, forensics will be intact.
 
             request.failed_invocation_id = invocation.invocation_id
             request.is_done = True
             request.save()
+
+            # Send notification.
+
+            notify = mr.log.get_notify()
+            notify.exception("Mapper invocation [%s] under request [%s] "
+                             "failed. HANDLER=[%s]", 
+                             invocation.invocation_id, request.request_id, 
+                             step.map_handler_name)
+
+            # Schedule the request for destruction.
+
+            wm = mr.workflow_manager.get_wm()
+            managed_workflow = wm.get(workflow.workflow_name)
+
+            managed_workflow.cleanup_queue.add_request(request)
 
             raise
 
@@ -654,21 +663,30 @@ class _StepProcessor(object):
             _logger.exception("Exception while processing REDUCE under "
                               "request: %s", request)
 
-            traceback_text = traceback.format_exc()
+            # Formally mark the request as failed but finished. In the event 
+            # that request-cleanup is disabled, forensics will be intact.
 
-            notify = mr.log.get_notify()
-            notify.exception("Reducer invocation [%s] under request [%s] "
-                             "failed. HANDLER=[%s]\n%s", 
-                             invocation.invocation_id, request.request_id, 
-                             step.reducer_handler_name, traceback_text)
-
-# TODO(dustin): We might have to remove the chain of invocations, on error.
-            reduce_invocation.error = traceback_text
+            reduce_invocation.error = traceback.format_exc()
             reduce_invocation.save()
 
             request.failed_invocation_id = reduce_invocation.invocation_id
             request.is_done = True
             request.save()
+
+            # Send notification.
+
+            notify = mr.log.get_notify()
+            notify.exception("Reducer invocation [%s] under request [%s] "
+                             "failed. HANDLER=[%s]", 
+                             invocation.invocation_id, request.request_id, 
+                             step.reducer_handler_name)
+
+            # Schedule the request for destruction.
+
+            wm = mr.workflow_manager.get_wm()
+            managed_workflow = wm.get(workflow.workflow_name)
+
+            managed_workflow.cleanup_queue.add_request(request)
 
             raise
 
