@@ -6,6 +6,8 @@
 #MR_RESULT_WRITER_FQ_CLASS=mr.result_writers.file.FileResultWriter \
 #MR_RESULT_WRITER_FQ_CLASS=mr.result_writers.inline.InlineResultWriter \
 
+#MR_LOG_HTTP_HOOK=1 \
+#MR_LOG_HTTP_HOSTNAME=abc.def.ghi \
 #MR_LOG_EMAIL_HOOK=1 \
 #MR_LOG_EMAIL_FROM=dustin@openpeak.com \
 #MR_LOG_EMAIL_TO=dustin@openpeak.com \

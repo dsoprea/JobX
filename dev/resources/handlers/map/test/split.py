@@ -13,7 +13,8 @@ required_capability: none
 
 arg_dict = dict(arguments)
 
-#NOTIFY_EMAIL.info("Test message.")
+#NOTIFY_EMAIL.info("Test EMAIL message.")
+#NOTIFY_HTTP.info("Test HTTP message.")
 
 LOG.info("mapper(split): Top.")
 
