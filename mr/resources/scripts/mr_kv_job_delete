@@ -9,22 +9,18 @@ import argparse
 import pprint
 
 import mr.config.log
+import mr.models.kv.job
 import mr.models.kv.workflow
-import mr.models.kv.step
 
-description = "Get a step entity"
+description = "Get a job entity"
 
 parser = argparse.ArgumentParser(description=description)
 
 parser.add_argument('workflow_name', help='Workflow name')
-parser.add_argument('step_name', help='Step name')
+parser.add_argument('job_name', help='Job name')
 
 args = parser.parse_args()
 
 workflow = mr.models.kv.workflow.get(args.workflow_name)
-step = mr.models.kv.step.Step.get(workflow, args.step_name)
-
-# TODO(dustin): We should verify that no jobs are currently hooked to this 
-#               step.
-
-step.delete()
+job = mr.models.kv.job.get(workflow, args.job_name)
+job.delete()

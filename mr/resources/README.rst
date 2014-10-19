@@ -216,6 +216,10 @@ Entity Types
 - *invocation*: This is the basic unit of operation. Every time a mapper or reducer is queued, it is given its own invocation record.
 
 
+Scripts
+=======
+
+
 Directly Reading KV Entities
 ============================
 
@@ -233,6 +237,10 @@ Where we want to read the "request" entity with the given ID under the "build" w
         "job_name": "obfuscate_for_clients",
         "workflow_name": "build"
     }
+
+NOTE: *etcd* allows for modifying KV nodes via REST, as well. However, this is 
+not recommended. Use the scripts to mitigate any potential mistakes, and to 
+invoke any validation.
 
 
 -------

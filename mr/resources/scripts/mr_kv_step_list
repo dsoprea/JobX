@@ -27,7 +27,7 @@ steps = list(steps)
 print("By step:")
 print('')
 
-for step in (step for step in sorted(steps, key=lambda s: s.step_name)):
+for step in sorted(steps, key=lambda s: s.step_name):
     print('  %s: D=[%s] M=[%s] C=[%s] R=[%s]' % 
           (step.step_name, step.description, step.map_handler_name, 
            step.combine_handler_name, step.reduce_handler_name))
@@ -36,7 +36,7 @@ print('')
 print("By mapper:")
 print('')
 
-for step in (step for step in sorted(steps, key=lambda s: s.map_handler_name)):
+for step in sorted(steps, key=lambda s: s.map_handler_name):
     print('  %s: S=[%s] C=[%s] R=[%s]' % 
           (step.map_handler_name, step.step_name, step.combine_handler_name, 
            step.reduce_handler_name))
@@ -45,7 +45,7 @@ print('')
 print("By combiner:")
 print('')
 
-for step in (step for step in sorted(steps, key=lambda s: s.combine_handler_name)):
+for step in sorted(steps, key=lambda s: s.combine_handler_name):
     print('  %s: S=[%s] M=[%s] R=[%s]' % 
           (step.combine_handler_name, step.step_name, step.map_handler_name, 
            step.reduce_handler_name))
@@ -54,7 +54,7 @@ print('')
 print("By reducer:")
 print('')
 
-for step in (step for step in sorted(steps, key=lambda s: s.reduce_handler_name)):
+for step in sorted(steps, key=lambda s: s.reduce_handler_name):
     print('  %s: S=[%s] M=[%s] C=[%s]' % 
           (step.reduce_handler_name, step.step_name, step.map_handler_name, 
            step.combine_handler_name))
