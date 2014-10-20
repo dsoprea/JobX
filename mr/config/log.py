@@ -1,3 +1,8 @@
+"""This module is responsible for wiring the logging, which encapsulates 
+standard application logging, as well as two forms of debug logging, and 
+the handler logs (LOG, EMAIL, and HTTP).
+"""
+
 import logging
 import logging.handlers
 import os
@@ -37,14 +42,14 @@ if is_handler_debug is True:
     fh.setFormatter(_FORMATTER)
     handler_logger.addHandler(fh)
 
-    handler_log_level = os.environ.get('MR_HANDLER_LOG_LEVEL', 'DEBUG')
-    handler_logger.setLevel(getattr(logging, handler_log_level))
+    handler_log_level = os.environ.get('MR_HANDLER_LOG_LEVEL', 'debug')
+    handler_logger.setLevel(getattr(logging, handler_log_level.upper()))
 
 def _configure_email():
     hostname = os.environ.get('MR_LOG_EMAIL_HOSTNAME', 'localhost')
     from_email = os.environ.get('MR_LOG_EMAIL_FROM', 'mapreduce@local')
     to_email = os.environ['MR_LOG_EMAIL_TO'].split(',')
-    subject = os.environ.get('MR_LOG_EMAIL_SUBJECT', 'MapReduce Notification')
+    subject = os.environ.get('MR_LOG_EMAIL_SUBJECT', 'JobX Notification')
 
     try:
         username = os.environ['MR_LOG_EMAIL_USERNAME']
@@ -88,6 +93,9 @@ def _configure_email():
     sh.setFormatter(_FORMATTER)
     handler_logger_email.addHandler(sh)
 
+    log_level = os.environ.get('MR_HANDLER_EMAIL_LOG_LEVEL', 'info')
+    handler_logger_email.setLevel(getattr(logging, log_level.upper()))
+
 DO_HOOK_EMAIL = bool(int(os.environ.get('MR_LOG_EMAIL_HOOK', '0')))
 if DO_HOOK_EMAIL is True:
     _configure_email()
@@ -111,6 +119,9 @@ def _configure_http():
     hh = logging.handlers.HTTPHandler(hostname, path, method=verb)
     handler_logger_http.addHandler(hh)
     handler_logger_http.debug("HTTP logging configured.")
+
+    log_level = os.environ.get('MR_HANDLER_HTTP_LOG_LEVEL', 'info')
+    handler_logger_http.setLevel(getattr(logging, log_level.upper()))
 
 DO_HOOK_HTTP = bool(int(os.environ.get('MR_LOG_HTTP_HOOK', '0')))
 if DO_HOOK_HTTP is True:

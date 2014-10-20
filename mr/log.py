@@ -1,5 +1,7 @@
+import sys
 import logging
 import traceback
+import functools
 
 import mr.config.log
 
@@ -11,12 +13,14 @@ handler_logger_email = _handler_logger.getChild('EMAIL')
 handler_logger_http = _handler_logger.getChild('HTTP')
 
 
-class _ExceptionNotifyWrapper(object):
-    def exception(self, message, *args):
+class _Notify(object):
+    def __log(self, type_, message, *args):
         message = message % args
 
-        # The HTTPHandler won't transfer the traceback.
-        message_with_exception = message + "\n\n" + traceback.format_exc()
+        message_with_extra = message
+        if sys.exc_type is not None:
+            # The HTTPHandler won't transfer the traceback.
+            message_with_extra += '\n\n' + traceback.format_exc()
 
         if mr.config.log.DO_HOOK_EMAIL is True or \
            mr.config.log.DO_HOOK_HTTP is True:
@@ -24,7 +28,11 @@ class _ExceptionNotifyWrapper(object):
 
             if mr.config.log.DO_HOOK_EMAIL is True:
                 try:
-                    mr.config.log.handler_logger_email.exception(message)
+                    handler = getattr(
+                                mr.config.log.handler_logger_email, 
+                                type_)
+
+                    handler(message)
                 except:
                     _logger.exception("Email exception notify failed.")
                 else:
@@ -35,7 +43,11 @@ class _ExceptionNotifyWrapper(object):
                 # resolution/etc.
 
                 try:
-                    mr.config.log.handler_logger_http.exception(message_with_exception)
+                    handler = getattr(
+                                mr.config.log.handler_logger_http, 
+                                type_)
+
+                    handler(message_with_extra)
                 except:
                     _logger.exception("HTTP exception notify failed.")
                 else:
@@ -47,11 +59,14 @@ class _ExceptionNotifyWrapper(object):
             _logger.warning("Exception notifications aren't hooked.")
             _logger.exception(*args, **kwargs)
 
+    def __getattr__(self, name):
+        return functools.partial(self.__log, name)
+
 _notify = None
 def get_notify():
     global _notify
 
     if _notify is None:
-        _notify = _ExceptionNotifyWrapper()
+        _notify = _Notify()
 
     return _notify

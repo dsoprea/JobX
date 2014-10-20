@@ -34,7 +34,7 @@ class HookedHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         
         message = entry['msg'][0]
 
-        print('%s  %40s  %9s  %s' % 
+        print('%s  %-40s  %9s  %s' % 
               (timestamp_phrase, where_name, level_name, message))
 
     def do_POST(self):

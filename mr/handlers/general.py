@@ -5,6 +5,7 @@ import logging
 import collections
 import time
 import threading
+import functools
 
 import mr.config.log
 import mr.models.kv.handler
@@ -12,6 +13,7 @@ import mr.models.kv.workflow
 import mr.handlers.utility
 import mr.handlers.scope
 import mr.fs.general
+import mr.log
 
 _PATH_SEP = '/'
 
@@ -31,6 +33,23 @@ _logger.setLevel(logging.INFO)
 
 class HandlerFormatException(Exception):
     pass
+
+
+class _WrappedLog(object):
+    """The arguments to the HTTP logger will not be filled-in by the time 
+    they're sent out, but because of the way they're sent, it's tough to do in 
+    the HTTP receiver. So, we do it upfront, here.
+    """
+
+    def __init__(self, logger):
+        self.__logger = logger
+
+    def __log(self, type_, message, *args):
+        message = message % args
+        return getattr(self.__logger, type_)(message)
+
+    def __getattr__(self, name):
+        return functools.partial(self.__log, name)
 
 
 class Handlers(object):
@@ -119,9 +138,17 @@ class Handlers(object):
 
         self.__library.set_handlers_state(source_state)
 
-        _logger.info("Updating handlers: NEW=(%d) UPDATED=(%d) DELETED=(%d)",
-                     len(new_handler_names_s), len(updated_handler_names_s),
-                     len(deleted_handler_names_s))
+        message = "Applying handler updates: NEW=(%d) UPDATED=(%d) " \
+                  "DELETED=(%d)" % \
+                  (len(new_handler_names_s), len(updated_handler_names_s),
+                   len(deleted_handler_names_s))
+
+        _logger.info(message)
+
+        # If the handlers have been changed, send a notification.
+        if len(stored_handlers) > 0:
+            notify = mr.log.get_notify()
+            notify.info(message)
 
         for new_handler_name in new_handler_names_s:
             try:
@@ -165,14 +192,16 @@ class Handlers(object):
             'SEP': _PATH_SEP,
             'JOIN': path_join,
             'LOG': raw_log,
+            'NOTIFY': mr.log.get_notify(),
             '__name__': 'handler(' + hd.name + ')',
         }
 
         if mr.config.log.DO_HOOK_EMAIL is True:
-            scope['NOTIFY_EMAIL'] = handler_log.getChild('EMAIL').getChild(hd.name)
+            scope['EMAIL'] = handler_log.getChild('EMAIL').getChild(hd.name)
             
         if mr.config.log.DO_HOOK_HTTP is True:
-            scope['NOTIFY_HTTP'] = handler_log.getChild('HTTP').getChild(hd.name)
+            handler_http_logger = handler_log.getChild('HTTP').getChild(hd.name)
+            scope['HTTP'] = _WrappedLog(handler_http_logger)
 
         return scope
 
