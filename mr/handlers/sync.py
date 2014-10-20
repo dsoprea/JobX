@@ -294,6 +294,7 @@ class HandlerSync(object):
         handler.source_code = source_code
         handler.version = version
         handler.handler_type = handler_type
+        handler.required_capability = meta['required_capability']
 
         self.__validate_handler(handler)
 

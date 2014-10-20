@@ -76,6 +76,10 @@ class _QueuePusher(object):
         else:
             capability_name = mr.constants.CAP_GENERAL
 
+        _logger.debug("Queueing MAP [%s]. CAPABILITY=[%s] WORKFLOW=[%s]", 
+                      message_parameters.invocation, capability_name, 
+                      message_parameters.workflow.workflow_name)
+
         replacements = {
             'workflow_name': message_parameters.workflow.workflow_name,
             'capability_name': capability_name,
@@ -107,8 +111,8 @@ class _QueuePusher(object):
                             message_parameters.workflow, 
                             reduce_step.reduce_handler_name)
 
-        _logger.debug("Queueing reduce of step [%s] for parent invocation: [%s]", 
-                      reduce_step.step_name, parent_invocation)
+        _logger.debug("Queueing reduce of step [%s] for parent invocation: "
+                      "[%s]", reduce_step.step_name, parent_invocation)
 
         workflow = message_parameters.workflow
 
@@ -143,6 +147,10 @@ class _QueuePusher(object):
             capability_name = reduce_handler.required_capability
         else:
             capability_name = mr.constants.CAP_GENERAL
+
+        _logger.debug("Queueing REDUCE [%s]. CAPABILITY=[%s] WORKFLOW=[%s]", 
+                      reduce_parameters.invocation, capability_name, 
+                      reduce_parameters.workflow.workflow_name)
 
         replacements = {
             'workflow_name': workflow.workflow_name,
