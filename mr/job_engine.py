@@ -678,8 +678,8 @@ class _StepProcessor(object):
             notify = mr.log.get_notify()
             notify.exception("Reducer invocation [%s] under request [%s] "
                              "failed. HANDLER=[%s]", 
-                             invocation.invocation_id, request.request_id, 
-                             step.reducer_handler_name)
+                             reduce_invocation.invocation_id, 
+                             request.request_id, step.reduce_handler_name)
 
             # Schedule the request for destruction.
 
