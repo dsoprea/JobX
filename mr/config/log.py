@@ -9,6 +9,8 @@ import os
 
 import mr.config
 
+_DEFAULT_HTTP_PORT = 3333
+
 _FMT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 _FORMATTER = logging.Formatter(_FMT)
 
@@ -107,14 +109,14 @@ def _configure_http():
     try:
         port = int(os.environ['MR_LOG_HTTP_PORT'])
     except KeyError:
-        pass
-    else:
-        hostname += ':' + str(port)
+        port = _DEFAULT_HTTP_PORT
+
+    hostname += ':' + str(port)
     
     verb = os.environ.get('MR_LOG_HTTP_VERB', 'post')
 
-    logger.info("Configuring HTTPHandler: HOST=[%s] PATH=[%s] VERB=[%s]", 
-                hostname, path, verb)
+    logger.info("Configuring HTTPHandler: HOST=[%s] PORT=(%d) PATH=[%s] "
+                "VERB=[%s]", hostname, port, path, verb)
 
     hh = logging.handlers.HTTPHandler(hostname, path, method=verb)
     handler_logger_http.addHandler(hh)
