@@ -14,38 +14,6 @@ root_path = os.path.abspath(os.path.join(os.path.dirname(mr.__file__), '..'))
 
 os.chdir(root_path)
 
-## Normal imports.
-
-import atexit
-
-## Make sure that the socket-file doesn't already exist (which would imply that 
-## we're already running).
-## This is largely to prevent irreconciliable anomalies where queue messages 
-## will mysteriously disappear and some time is lost until it's apparently that 
-## you forgot an instance was already running.
-
-config_path = os.path.join(root_path, 'mr', 'resources', 'data')
-sys.path.insert(0, config_path)
-
-import gunicorn_conf_dev
-
-binding = gunicorn_conf_dev.bind
-if binding.startswith('unix:'):
-    socket_filepath = binding[5:]
-    if os.path.exists(socket_filepath) is True:
-        raise EnvironmentError("Gunicorn socket file already exists: [%s]" % 
-                               (socket_filepath))
-else:
-    socket_filepath = None
-
-## Schedule shutdown hook.
-
-def _shutdown_hook():
-    if socket_filepath is not None:
-        os.unlink(socket_filepath)
-
-atexit.register(_shutdown_hook)
-
 ## Start Gunicorn.
 
 import subprocess
