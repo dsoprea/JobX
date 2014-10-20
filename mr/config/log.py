@@ -10,15 +10,20 @@ import os
 import mr.config
 
 _DEFAULT_HTTP_PORT = 3333
+_LOG_FILEPATH = os.environ.get('MR_LOG_FILEPATH', '/var/log/jobx.log')
 
 _FMT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 _FORMATTER = logging.Formatter(_FMT)
 
 logger = logging.getLogger()
 
-sh = logging.StreamHandler()
-sh.setFormatter(_FORMATTER)
-logger.addHandler(sh)
+#sh = logging.StreamHandler()
+#sh.setFormatter(_FORMATTER)
+#logger.addHandler(sh)
+
+wfh = logging.handlers.WatchedFileHandler(_LOG_FILEPATH)
+wfh.setFormatter(_FORMATTER)
+logger.addHandler(wfh)
 
 handler_logger = logging.getLogger('MR_HANDLER')
 
