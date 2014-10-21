@@ -17,13 +17,16 @@ _FORMATTER = logging.Formatter(_FMT)
 
 logger = logging.getLogger()
 
-#sh = logging.StreamHandler()
-#sh.setFormatter(_FORMATTER)
-#logger.addHandler(sh)
+DO_STREAM_LOG = bool(int(os.environ.get('MR_DO_STREAM_LOG', '0')))
+if DO_STREAM_LOG is True:
+    sh = logging.StreamHandler()
+    sh.setFormatter(_FORMATTER)
+    logger.addHandler(sh)
 
-wfh = logging.handlers.WatchedFileHandler(_LOG_FILEPATH)
-wfh.setFormatter(_FORMATTER)
-logger.addHandler(wfh)
+if _LOG_FILEPATH != '':
+    wfh = logging.handlers.WatchedFileHandler(_LOG_FILEPATH)
+    wfh.setFormatter(_FORMATTER)
+    logger.addHandler(wfh)
 
 handler_logger = logging.getLogger('MR_HANDLER')
 
@@ -116,13 +119,13 @@ def _configure_http():
     except KeyError:
         port = _DEFAULT_HTTP_PORT
 
-    hostname += ':' + str(port)
-    
     verb = os.environ.get('MR_LOG_HTTP_VERB', 'post')
 
     logger.info("Configuring HTTPHandler: HOST=[%s] PORT=(%d) PATH=[%s] "
                 "VERB=[%s]", hostname, port, path, verb)
 
+    hostname += ':' + str(port)
+    
     hh = logging.handlers.HTTPHandler(hostname, path, method=verb)
     handler_logger_http.addHandler(hh)
     handler_logger_http.debug("HTTP logging configured.")
