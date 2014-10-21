@@ -46,6 +46,8 @@ class HookedHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         self.__print_entry(data)
 
+print("Listening on [%s]:(%s)." % (_HOSTNAME, _PORT))
+
 httpd = TCPServerReusableSocket(
             (_HOSTNAME, _PORT), 
             HookedHTTPRequestHandler)
