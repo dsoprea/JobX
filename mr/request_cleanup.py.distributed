@@ -1,13 +1,14 @@
 import logging
 import pprint
 import threading
-import Queue
+import time
 
 import mr.config
 import mr.config.request
 import mr.trace
 import mr.models.kv.workflow
 import mr.models.kv.queues.dataset
+import mr.models.kv.queues.request_cleanup
 import mr.models.kv.trees.relationships
 import mr.models.kv.trees.sessions
 
@@ -203,13 +204,22 @@ class CleanupQueue(object):
 
     def __init__(self, workflow):
         self.__workflow = workflow
-        self.__q = Queue.Queue()
+        self.__rcq = mr.models.kv.queues.request_cleanup.RequestCleanupQueue(
+                        workflow)
 
         self.__cc_exit_ev = threading.Event()
         self.__cc_t = None
 
         _logger.debug("Checking whether request cleanup-queue currently "
                       "exists.")
+
+        try:
+            list(self.__rcq.list_entities(head_count=0))
+        except KeyError:
+            _logger.debug("Creating request cleanup-queue.")
+            self.__rcq.create()
+        else:
+            _logger.debug("Request cleanup-queue does not need to be created.")
 
         if mr.config.request.DO_CLEANUP_REQUESTS is True:
             self.__schedule_cleanup_check()
@@ -227,34 +237,59 @@ class CleanupQueue(object):
         self.__cc_t.start()
 
     def __cleanup_check(self):
-# TODO(dustin): Add a failsafe mechanism that will allow us to still cleanup 
-#               old requests if we're terminated and restarted, or if one 
-#               server is docommissioned.
+        """Run a loop that keeps reading from the queue until there's nothing, 
+        and then enters a blocking operation to wait on changes. There's a
+        marginal chance that there will be an add between our list and wait
+        operations, and that we'll have to wait for the next add to release the
+        block.
+        """
+
+        if self.__rcq.exists() is False:
+            self.__rcq.create()
 
         while self.__cc_exit_ev.is_set() is False:
             _logger.debug("Checking for requests to be pruned.")
 
-            timeout_s = mr.config.request.CLEANUP_TIMEOUT_S
+            requests = self.__rcq.list_keys_with_data(
+                        head_count=mr.config.request.CLEANUP_BATCH_SIZE)
 
-            try:
-                request_id = self.__q.get(timeout=timeout_s)
-            except Queue.Empty:
+            i = 0
+            for key, request_id in requests:
+                _logger.debug("Pruning request: %s", request_id)
+
+                try:
+                    request = mr.models.kv.request.get(
+                                self.__workflow, 
+                                request_id)
+                except KeyError:
+                    _logger.error("Could not prune request (not found). It "
+                                  "might've already been removed.")
+                else:
+                    rc = RequestCleanup(request)
+                    rc.prune_request()
+
+                self.__rcq.delete_key(key)
+
+                i += 1
+
+            if i == 0:
+                _logger.debug("No requests found to be pruned. Blocking.")
+
+                while 1:
+                    try:
+# TODO(dustin): We might want to time-out after a particular interval.
+                        self.__rcq.wait_for_change()
+                    except mr.models.kv.data_layer.KvWaitFaultException:
+                        _logger.debug("Request-cleanup wait fault. Recycling.")
+                        continue
+                    else:
+                        break
+
                 continue
 
-            _logger.debug("Pruning request: %s", request_id)
-
-            try:
-                request = mr.models.kv.request.get(
-                            self.__workflow, 
-                            request_id)
-            except KeyError:
-                # This shouldn't happen.
-                _logger.error("Could not prune request (not found). It "
-                              "might've already been removed.")
-            else:
-                rc = RequestCleanup(request)
-                rc.prune_request()
+            _logger.debug("(%d) requests were pruned.", i)
+            time.sleep(mr.config.request.CLEANUP_MANDATORY_QUIET_PERIOD_S)
 
     def add_request(self, request):
         _logger.debug("Adding request to be cleaned-up: %s", str(request))
-        self.__q.put(request.request_id)
+        self.__rcq.add(request.request_id)
