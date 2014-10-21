@@ -16,6 +16,11 @@ os.chdir(root_path)
 
 ## Start Gunicorn.
 
+# TODO(dustin): Have to pass "env=" into Popen?
+
+os.environ['MR_DO_STREAM_LOG'] = '0'
+os.environ['MR_LOG_FILEPATH'] = '/var/log/jobx.log'
+
 import subprocess
 
 cmd = ['gunicorn', '-c', 'mr/resources/data/gunicorn_conf_prod.py', 'mr.app.main:app']

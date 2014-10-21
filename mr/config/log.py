@@ -10,14 +10,14 @@ import os
 import mr.config
 
 _DEFAULT_HTTP_PORT = 3333
-_LOG_FILEPATH = os.environ.get('MR_LOG_FILEPATH', '/var/log/jobx.log')
+_LOG_FILEPATH = os.environ.get('MR_LOG_FILEPATH', '')
 
 _FMT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 _FORMATTER = logging.Formatter(_FMT)
 
 logger = logging.getLogger()
 
-DO_STREAM_LOG = bool(int(os.environ.get('MR_DO_STREAM_LOG', '0')))
+DO_STREAM_LOG = bool(int(os.environ.get('MR_DO_STREAM_LOG', '1')))
 if DO_STREAM_LOG is True:
     sh = logging.StreamHandler()
     sh.setFormatter(_FORMATTER)
