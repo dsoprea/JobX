@@ -6,7 +6,6 @@ def load_cls_from_string(fq_cls_name):
     m = __import__(fq_cls_name[:pivot], fromlist=[cls_name])
     return getattr(m, cls_name)
 
-
 # TODO(dustin): We likely won't be able to implement this unless we implement 
 #               the fork ourselves, directly. We won't know the final PID to 
 #               check if it's already running, and we can't remove it at the 
