@@ -15,9 +15,9 @@ HT_REDUCER = 'reducer'
 
 HANDLER_TYPES = (HT_MAPPER, HT_COMBINER, HT_REDUCER)
 
-_MAPPER_ARGS_S = set(['arguments', 'ctx'])
-_COMBINER_ARGS_S = set(['results', 'ctx'])
-_REDUCER_ARGS_S = set(['results', 'ctx'])
+_MAPPER_ARGS_S = set(['arguments'])
+_COMBINER_ARGS_S = set(['results'])
+_REDUCER_ARGS_S = set(['results'])
 
 
 class ArgumentMarshalError(Exception):

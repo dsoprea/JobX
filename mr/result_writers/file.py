@@ -1,11 +1,10 @@
-"""Represents a writer that returns the result within the response."""
+"""Represents a writer that stores the result in a file."""
 
 import os
 import csv
 
 import mr.config.result
 import mr.result_writers.base
-import mr.compat
 
 
 class FileResultWriter(mr.result_writers.base.BaseResultWriter):
@@ -18,14 +17,14 @@ class FileResultWriter(mr.result_writers.base.BaseResultWriter):
 
         self.__root_path = root_path
 
-    def render(self, request_id, result_pair_gen):
+    def render(self, request, result_pair_gen):
         if mr.config.result.FILE_WRITER_WRITE_AS_DIRECTORY is True:
-            return self.__write_as_directory(request_id, result_pair_gen)
+            return self.__write_as_directory(request, result_pair_gen)
         else:
-            return self.__write_as_file(request_id, result_pair_gen)
+            return self.__write_as_file(request, result_pair_gen)
 
-    def __write_as_directory(self, request_id, result_pair_gen):
-        path = os.path.join(self.__root_path, request_id)
+    def __write_as_directory(self, request, result_pair_gen):
+        path = os.path.join(self.__root_path, request.request_id)
 
         os.mkdir(path)
 
@@ -41,8 +40,8 @@ class FileResultWriter(mr.result_writers.base.BaseResultWriter):
             with open(filepath, 'wb') as f:
                 f.write(str(v))
 
-    def __write_as_file(self, request_id, result_pair_gen):
-        filepath = os.path.join(self.__root_path, request_id)
+    def __write_as_file(self, request, result_pair_gen):
+        filepath = os.path.join(self.__root_path, request.request_id)
 
         with open(filepath, 'wb') as f:
             cf = csv.writer(

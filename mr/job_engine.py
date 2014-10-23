@@ -24,15 +24,14 @@ import mr.models.kv.step
 import mr.models.kv.handler
 import mr.models.kv.invocation
 import mr.models.kv.trees.relationships
-import mr.models.kv.trees.sessions
 import mr.models.kv.queues.dataset
-import mr.models.kv.data_layer
 import mr.models.kv.request
 import mr.queue.queue_manager
 import mr.workflow_manager
 import mr.shared_types
 import mr.constants
 import mr.handlers.scope
+import mr.handlers.general
 import mr.utility
 import mr.log
 
@@ -52,9 +51,9 @@ _flow_logger = _logger.getChild('flow')
 #               sacrificing durability (if the process going down, there should 
 #               still be a high degree of synchronization).
 
-HANDLER_CTX_CLS = collections.namedtuple('HANDLER_CTX_CLS', 
-                                         ('session_get', 'session_set', 
-                                          'session_list'))
+#HANDLER_CTX_CLS = collections.namedtuple('HANDLER_CTX_CLS', 
+#                                         ('session_get', 'session_set', 
+#                                          'session_list'))
 
 #_request_logger = logging.getLogger('request-log')
 #
@@ -242,7 +241,8 @@ class _StepProcessor(object):
         pusher = _get_pusher()
         pusher.queue_map_step_from_parameters(mapped_parameters)
 
-    def __call_handler(self, workflow, handler_name, arguments):
+    def __call_handler(self, construction_context, workflow, handler_name, 
+                       arguments, allow_session_writes=True):
         wm = mr.workflow_manager.get_wm()
         managed_workflow = wm.get(workflow.workflow_name)
         handlers = managed_workflow.handlers
@@ -250,7 +250,27 @@ class _StepProcessor(object):
         _logger.debug("Calling handler [%s] under workflow [%s].", 
                       handler_name, workflow.workflow_name)
 
-        return handlers.run_handler(handler_name, arguments)
+        r = handlers.run_handler(
+                handler_name, 
+                arguments, 
+                construction_context, 
+                allow_session_writes=allow_session_writes)
+
+        (result, stdout, stderr) = r
+
+# TODO(dustin): Finish debugging.
+#
+#               We might want to read the first thing off the top of the 
+#               generator here (which may render an empty result), so that we 
+#               can trap and print any errors that might have occurred, here.
+#
+#        print("STDOUT >>>>>>")
+#        print(stdout.getvalue())
+#        print("STDERR >>>>>>")
+#        print(stderr.getvalue())
+#        print("DONE <<<<<<<<")
+
+        return result
 
     def __default_combiner(self, map_result_gen):
         """The default combiner: group by key."""
@@ -293,18 +313,17 @@ class _StepProcessor(object):
         return distilled_result_gen
 
     def __apply_combiner(self, workflow, current_step, map_invocation, 
-                         map_result_gen):
+                         map_result_gen, construction_context):
         combine_handler_name = current_step.combine_handler_name
-
-        handler_ctx = self.__get_handler_context(workflow, map_invocation)
 
         if combine_handler_name is not None:
             combine_handler = functools.partial(
                                 self.__call_handler, 
+                                construction_context,
                                 workflow, 
                                 combine_handler_name)
 
-            return combine_handler(map_result_gen, handler_ctx)
+            return combine_handler(map_result_gen)
         else:
             return self.__default_combiner(map_result_gen)
 
@@ -383,11 +402,16 @@ class _StepProcessor(object):
         # So, descending maps will be grouped, grouped a second time, grouped a 
         # third time, etc.. It's probably almost always desired to provide a 
         # combiner if we have more than one dimension of steps.
+        construction_context = mr.handlers.general.HANDLER_CONTEXT_CLS(
+                                request=message_parameters.request,
+                                invocation=invocation)
+
         map_result_gen = self.__apply_combiner(
                             workflow, 
                             message_parameters.step, 
                             invocation,
-                            handler_result_gen)
+                            handler_result_gen, 
+                            construction_context)
 
         _logger.debug("Writing result-set for invocation: [%s]", invocation)
 
@@ -431,60 +455,6 @@ class _StepProcessor(object):
             message_parameters, 
             invocation)
 
-    def __get_handler_context(self, workflow, map_invocation, 
-                              allow_session_writes=True):
-        """Return accessors of data that's stored on the map_invocation."""
-
-        st = mr.models.kv.trees.sessions.SessionsTree(
-                workflow, 
-                map_invocation)
-
-        state = { 'verified': None }
-
-        def check_state():
-            # Determine if the tree needs to be created, lazily (it might have 
-            # not been used).
-            if state['verified'] is None:
-                if st.exists() is False:
-                    _logger.debug("Creating session for map-invocation: %s", 
-                                  map_invocation)
-
-                    try:
-                        st.create()
-                    except mr.models.kv.data_layer.KvPreconditionException:
-                        _logger.warning("It looks like the session was "
-                                        "already started by a parallel "
-                                        "mechanism.")
-                else:
-                    _logger.debug("Session for map-invocation already exists: "
-                                  "%s", map_invocation)
-
-                state['verified'] = True
-
-        def session_set_accessor(key, value):
-            if allow_session_writes is False:
-                raise EnvironmentError("Session writes are disabled from the "
-                                       "current context.")
-
-            check_state()
-            st.set(key, value)
-
-        def session_get_accessor(key):
-            check_state()
-            return st.get(key)
-
-        def session_list_accessor():
-            check_state()
-            return st.list()
-
-# TODO(dustin): We still have to implement the "STEP_INSTANCE_ID" field.
-#                'STEP_INSTANCE_ID': 1234,
-
-        return HANDLER_CTX_CLS(
-                session_get=session_get_accessor, 
-                session_set=session_set_accessor,
-                session_list=session_list_accessor)
-
     def handle_map(self, message_parameters):
         """Handle one dequeued map job."""
 
@@ -515,14 +485,16 @@ class _StepProcessor(object):
                 _logger.debug("Sending arguments to mapper:\n%s", 
                               pprint.pformat(arguments))
 
-            handler_ctx = self.__get_handler_context(workflow, invocation)
-
             wrapped_arguments = {
                 'arguments': arguments,
-                'ctx': handler_ctx,
             }
 
+            construction_context = mr.handlers.general.HANDLER_CONTEXT_CLS(
+                                    request=request,
+                                    invocation=invocation)
+
             handler_result_gen = self.__call_handler(
+                                    construction_context,
                                     workflow, 
                                     step.map_handler_name, 
                                     wrapped_arguments)
@@ -560,9 +532,17 @@ class _StepProcessor(object):
                     workflow, 
                     invocation,
                     message_parameters)
-        except:
+        except Exception as e:
             _logger.exception("Exception while processing MAP under request: "
                               "%s", request)
+
+            if issubclass(e.__class__, mr.handlers.general.HandlerException):
+# TODO(dustin): Finish debugging this.
+                print("MAP ERROR STDOUT >>>>>>>>>>>>>")
+                print(e.stdout)
+                print("MAP ERROR STDERR >>>>>>>>>>>>>")
+                print(e.stderr)
+                print("MAP ERROR <<<<<<<<<<<<<<<<<<<<")
 
             invocation.error = traceback.format_exc()
             invocation.save()
@@ -667,9 +647,17 @@ class _StepProcessor(object):
                         map_invocation,
                         workflow, 
                         request)
-        except:
+        except Exception as e:
             _logger.exception("Exception while processing REDUCE under "
                               "request: %s", request)
+
+            if issubclass(e.__class__, mr.handlers.general.HandlerException):
+# TODO(dustin): Finish debugging this.
+                print("REDUCE ERROR STDOUT >>>>>>>>>>>>>")
+                print(e.stdout)
+                print("REDUCE ERROR STDERR >>>>>>>>>>>>>")
+                print(e.stderr)
+                print("REDUCE ERROR <<<<<<<<<<<<<<<<<<<<")
 
             # Formally mark the request as failed but finished. In the event 
             # that request-cleanup is disabled, forensics will be intact.
@@ -796,22 +784,20 @@ class _StepProcessor(object):
         # We're not in Python3, so we have to use <dict>.iteritems().
         grouped_results_gen = grouped_results.iteritems()
 
-        # Disable session writes because there's no purpose by the time we get 
-        # to the reducer.
-        handler_ctx = self.__get_handler_context(
-                        workflow, 
-                        map_invocation, 
-                        allow_session_writes=False)
-
         handler_arguments = {
             'results': grouped_results_gen,
-            'ctx': handler_ctx,
         }
 
+        construction_context = mr.handlers.general.HANDLER_CONTEXT_CLS(
+                                request=request,
+                                invocation=map_invocation)
+
         reduce_result_gen = self.__call_handler(
+                                construction_context,
                                 workflow,
                                 step.reduce_handler_name, 
-                                handler_arguments)
+                                handler_arguments,
+                                allow_session_writes=False)
 
         if mr.config.IS_DEBUG is True:
             reduce_result_gen = list(reduce_result_gen)            
@@ -885,25 +871,23 @@ class _StepProcessor(object):
 
         results_gen = ((data['k'], data['vl']) for data in results_gen)
 
-        # Disable session writes because there's no purpose by the time we get 
-        # to the reducer.
-        handler_ctx = self.__get_handler_context(
-                        workflow, 
-                        map_invocation, 
-                        allow_session_writes=False)
-
         handler_arguments = {
             'results': results_gen,
-            'ctx': handler_ctx,
         }
 
         # Call the handler with a generator of all of the results to be 
         # reduced.
 
+        construction_context = mr.handlers.general.HANDLER_CONTEXT_CLS(
+                                request=request,
+                                invocation=map_invocation)
+
         reduce_result_gen = self.__call_handler(
+                                construction_context,
                                 workflow,
                                 step.reduce_handler_name, 
-                                handler_arguments)
+                                handler_arguments,
+                                allow_session_writes=False)
 
         if mr.config.IS_DEBUG is True:
             reduce_result_gen = list(reduce_result_gen)            
@@ -1085,9 +1069,7 @@ class _RequestReceiver(object):
             _logger.debug("Result to return for request:\n%s", 
                           pprint.pformat(result_pair_gen))
 
-        result = self.__result_writer.render(
-                    request.request_id, 
-                    result_pair_gen)
+        result = self.__result_writer.render(request, result_pair_gen)
 
         # The result-writer can generate information that will be returned in 
         # the request-response. However, this doesn't make sense if the request

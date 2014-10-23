@@ -243,7 +243,6 @@ class HandlerSync(object):
         """
 
         return [
-            ('ctx', None),
         ]
 
     def __create_handler(self, name, meta, description, source_type, 

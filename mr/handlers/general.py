@@ -6,10 +6,15 @@ import collections
 import time
 import threading
 import functools
+import traceback
+import cStringIO
+import subprocess
 
 import mr.config.log
+import mr.models.kv.data_layer
 import mr.models.kv.handler
 import mr.models.kv.workflow
+import mr.models.kv.trees.sessions
 import mr.handlers.utility
 import mr.handlers.scope
 import mr.fs.general
@@ -18,7 +23,7 @@ import mr.log
 _PATH_SEP = '/'
 
 HANDLER_DEFINITION_CLS = collections.namedtuple(
-                            'HandlerDefinition', 
+                            'HANDLER_DEFINITION_CLS', 
                             ['name', 
                              'version', 
                              'description', 
@@ -27,12 +32,62 @@ HANDLER_DEFINITION_CLS = collections.namedtuple(
                              'source_type',
                              'cast_arguments'])
 
+STAGED_HANDLER_CLS = collections.namedtuple(
+                        'STAGED_HANDLER_CLS',
+                        ['definition', 
+                         'argument_names', 
+                         'basic_scope'])
+
+HANDLER_CONTEXT_CLS = collections.namedtuple(
+                        'HANDLER_CONTEXT_CLS',
+                        ['request', 
+                         'invocation'])
+
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
 class HandlerFormatException(Exception):
     pass
+
+
+class HandlerException(Exception):
+    def __init__(self, handler_definition, workflow, exception, traceback, 
+                 stdout, stderr):
+        super(Exception, self).__init__("There was an exception while running "
+                                        "handler [%s] under workflow [%s]." % 
+                                        (hd.name, workflow))
+
+        self.__handler_definition = handler_definition
+        self.__workflow = workflow
+        self.__exception = exception
+        self.__traceback = traceback
+        self.__stdout = stdout
+        self.__stderr = stderr
+
+    @property
+    def handler_definition(self):
+        return self.__handler_definition
+
+    @property
+    def workflow(self):
+        return self.__workflow
+
+    @property
+    def exception(self):
+        return self.__exception
+
+    @property
+    def traceback(self):
+        return self.__traceback
+
+    @property
+    def stdout(self):
+        return self.__stdout
+
+    @property
+    def stderr(self):
+        return self.__stderr
 
 
 class _WrappedLog(object):
@@ -66,7 +121,7 @@ class Handlers(object):
         self.__library = library
         self.__hsf = handler_scope_factory
 
-        self.__compiled = {}
+        self.__staged_handlers = {}
 
         self.__ucl_exit_ev = None
         self.__ucl_t = None
@@ -161,7 +216,7 @@ class Handlers(object):
             self.__library.create_handler(hd)
 
         for updated_handler_name in updated_handler_names_s:
-            del self.__compiled[updated_handler_name]
+            del self.__staged_handlers[updated_handler_name]
 
             try:
                 hd = self.__source.get_handler(updated_handler_name)
@@ -174,16 +229,18 @@ class Handlers(object):
 
         for deleted_handler_name in deleted_handler_names_s:
             self.__library.delete_handler(deleted_handler_name)
-            del self.__compiled[deleted_handler_name]
+            del self.__staged_handlers[deleted_handler_name]
 
-        self.__compile_handlers()
+        self.__stage_handlers()
 
-    def __get_scope_objects(self, hd):
+    def __get_scope_objects(self, hd, context):
         fs = mr.fs.general.get_fs(self.__workflow)
 
         def path_join(*args):
             return _PATH_SEP.join(args)
-
+# TODO(dustin): Incorporate the contextual information in the logging (such as 
+#               the handler name, the current request, and the current 
+#               invocation)
         handler_log = logging.getLogger('MR_HANDLER')
         raw_log = handler_log.getChild('RAW').getChild(hd.name)
 
@@ -197,37 +254,93 @@ class Handlers(object):
         }
 
         if mr.config.log.DO_HOOK_EMAIL is True:
-            scope['EMAIL'] = handler_log.getChild('EMAIL').getChild(hd.name)
+            scope['EMAIL'] = handler_log.getChild('EMAIL').\
+                                getChild(hd.name)
             
         if mr.config.log.DO_HOOK_HTTP is True:
-            handler_http_logger = handler_log.getChild('HTTP').getChild(hd.name)
+            handler_http_logger = handler_log.getChild('HTTP').\
+                                    getChild(hd.name)
+
             scope['HTTP'] = _WrappedLog(handler_http_logger)
 
         return scope
 
-    def __compile_handler(self, hd, arg_names, scope=None):
+    def __compile_handler(self, hd, arg_names, context, scope=None):
         if scope is None:
             scope = {}
 
         scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
-        scope.update(self.__get_scope_objects(hd))
+        scope.update(self.__get_scope_objects(hd, context))
 
         processor = mr.handlers.utility.get_processor(hd.source_type)
 
-        handler_scope = scope
+        handler_scope = {}
+        handler_scope.update(scope)
+
+        stdout_ = cStringIO.StringIO()
+        stderr_ = cStringIO.StringIO()
+
+        def custom_print(message):
+            """Write the given text into the redirected pipes."""
+
+# TODO(dustin): Until we can figure out how to trap and print errors in the right place.
+            print(message)
+#            stdout_.write(message)
+#            stdout_.write('\n')
+
+        def run_external(cmd, input_data=None, success_code=0, env=None):
+            """Feed the *stdout* and *stderr* text into the redirected pipes.
+            """
+
+            try:
+                handler_scope['HTTP'].debug("RUN: %s", cmd)
+            except KeyError:
+                pass
+
+            stdin = subprocess.PIPE if input_data is not None else None
+            p = subprocess.Popen(
+                    cmd, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE, 
+                    stdin=stdin,
+                    env=env)
+
+            (stdout_text, stderr_text) = p.communicate(input=input_data)
+
+# TODO(dustin): Until we can figure out how to trap and print errors in the right place.
+            print(stdout_text)
+            print(stderr_text)
+#            stdout_.write(stdout_text)
+#            stderr_.write(stderr_text)
+
+            if success_code is not None and p.returncode != success_code:
+                raise ValueError("Command failed: [%s]" % (cmd,))
+
+            return p.returncode
+            
+        handler_scope['PRINT'] = custom_print
+        handler_scope['RUN'] = run_external
 
         if self.__hsf is not None:
             handler_scope.update(self.__hsf.get_scope(hd))
 
-        (meta, compiled) = processor.compile(
-                            hd.name, 
-                            arg_names, 
-                            hd.source_code, 
-                            scope=scope)
+        r = processor.compile(
+                hd.name, 
+                arg_names, 
+                hd.source_code, 
+                stdout=stdout_, 
+                stderr=stderr_, 
+                scope=handler_scope)
  
-        return (meta, compiled)
+        (meta, compiled) = r
 
-    def __compile_handlers(self):
+        return (meta, compiled, stdout_, stderr_)
+
+    def __stage_handlers(self):
+        """Push the handlers into the dictionary that we use to describe all 
+        available handlers for this workflow.
+        """
+
         scope = {}
         scope.update(mr.handlers.scope.SCOPE_INJECTED_TYPES)
 
@@ -235,33 +348,123 @@ class Handlers(object):
         for name, arg_names, version in self.__library.list_handlers():
             handler_count += 1
 
-            if name in self.__compiled:
+            if name in self.__staged_handlers:
                 continue
 
             _logger.info("Compiling handler: [%s]", name)
 
             hd = self.__library.get_handler(name)
-            (meta, compiled) = self.__compile_handler(hd, arg_names, scope=scope)
 
-            self.__compiled[name] = compiled
+            self.__staged_handlers[name] = STAGED_HANDLER_CLS(
+                                        definition=hd,
+                                        argument_names=arg_names,
+                                        basic_scope=scope)
 
         if handler_count == 0:
             _logger.warning("No handlers were presented by the library. No "
                             "code was compiled.")
 
-    def run_handler(self, name, arguments_dict):
-        hd = self.__library.get_handler(name)
+    def __get_session(self, map_invocation, allow_session_writes=True):
+        """Return accessors of data that's stored on the map_invocation."""
 
-        arguments_list = [v for (k, v) in hd.cast_arguments(arguments_dict)]
+        st = mr.models.kv.trees.sessions.SessionsTree(
+                self.__workflow, 
+                map_invocation)
 
+        state = { 'verified': None }
+
+        def check_state():
+            # Determine if the tree needs to be created, lazily (it might have 
+            # not been used).
+            if state['verified'] is None:
+                if st.exists() is False:
+                    _logger.debug("Creating session for map-invocation: %s", 
+                                  map_invocation)
+
+                    try:
+                        st.create()
+                    except mr.models.kv.data_layer.KvPreconditionException:
+                        _logger.warning("It looks like the session was "
+                                        "already started by a parallel "
+                                        "mechanism.")
+                else:
+                    _logger.debug("Session for map-invocation already exists: "
+                                  "%s", map_invocation)
+
+                state['verified'] = True
+
+        def session_set_accessor(key, value):
+            if allow_session_writes is False:
+                raise EnvironmentError("Session writes are disabled from the "
+                                       "current context.")
+
+            check_state()
+            st.set(key, value)
+
+        def session_get_accessor(key):
+            check_state()
+            return st.get(key)
+
+        def session_list_accessor():
+            check_state()
+            return st.list()
+
+        return {
+            'S_GET': session_get_accessor, 
+            'S_SET': session_set_accessor,
+            'S_LIST': session_list_accessor
+        }
+
+    def run_handler(self, name, arguments_dict, context, 
+                    additional_scope={}, allow_session_writes=True):
         try:
-            compiled = self.__compiled[name]
+            staged_handler = self.__staged_handlers[name]
         except KeyError:
             _logger.exception("Handler [%s] is not registered.", name)
             raise
 
+        hd = staged_handler.definition
+        arg_names = staged_handler.argument_names
+        basic_scope = staged_handler.basic_scope
+
+        arguments_list = [v for (k, v) in hd.cast_arguments(arguments_dict)]
+
+        session_scope = self.__get_session(
+                            context.invocation, 
+                            allow_session_writes=allow_session_writes)
+
+        final_scope = {}
+
+        final_scope.update(additional_scope)
+        final_scope.update(session_scope)
+        final_scope.update(basic_scope)
+
+        compile_result = self.__compile_handler(
+                            hd, 
+                            arg_names, 
+                            context,
+                            scope=final_scope)
+
+        (meta, compiled, stdout, stderr) = compile_result
+
         processor = mr.handlers.utility.get_processor(hd.source_type)
-        return processor.run(compiled, arguments_list)
+
+        try:
+            result = processor.run(compiled, arguments_list)
+        except Exception as e:
+            _logger.exception("Exception in handler [%s] under workflow [%s].", 
+                              name, self.__workflow)
+# TODO(dustin): Because the call is likely a generator, we will almost never 
+#               catch an exception here. How can we wrap that exception?
+            raise HandlerException(
+                    hd,
+                    self.__workflow,
+                    e, 
+                    traceback.format_exc(), 
+                    stdout, 
+                    stderr)
+
+        return (result, stdout, stderr)
 
 def update_workflow_handle_state(workflow_name):
     _logger.debug("Updating workflow with new handlers state.")

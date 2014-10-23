@@ -2,5 +2,5 @@
 
 
 class BaseResultWriter(object):
-    def render(self, request_id, result_pair_gen):
+    def render(self, request, result_pair_gen):
         raise NotImplementedError()
