@@ -163,6 +163,8 @@ Currently, there are two:
 
 - *inline*: Return the data within the response. **This is the default.**
 - *file*: Store to a local directory.
+- *email*: Attach results to an email.
+- *http*: Post results to a webserver.
 
 
 Notifications

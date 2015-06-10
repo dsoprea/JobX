@@ -2,10 +2,10 @@ import logging
 import hashlib
 import random
 
-import mr.compat
+import webhooked.compat
 
-_logger = logging.getLogger(__name__)
-_logger.setLevel(logging.INFO)
+_LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel(logging.INFO)
 
 
 class CommonKv(object):
@@ -19,7 +19,7 @@ class CommonKv(object):
 
         key = parent + identity
 
-        _logger.debug("Rendered key: [%s] [%s] => [%s]", 
+        _LOGGER.debug("Rendered key: [%s] [%s] => [%s]", 
                       parent, identity, key)
 
         return key
@@ -58,6 +58,6 @@ class CommonKv(object):
 
             key = identity
 
-        _logger.debug("Flattening identity: [%s] => [%s]", identity, key)
+        _LOGGER.debug("Flattening identity: [%s] => [%s]", identity, key)
 
         return key
