@@ -1,0 +1,65 @@
+if we can't remove a request, skip it (it might've been removed by another worker).
+
+find a way for the logger to know its context. we could always keep track of what thread/gthread the queue has dispatched to, and look it up.
+
+like it or not, this will probably the only difference between notifications that are useful or not.
+
+Add a protocol for putting file-like objects in the reducer results, and then having the result-writers deposit files into the final place.
+-> Maybe we should have a "PhysicalFileAsset" type that can be used in the results, and, if found, the result-writers will know what to do with it.
+
+Add an S3 result-writer
+
+We definitely have a problem with dpipe where it looks like the server won't reannounce its connection after the first time. It actually does, but the check fails in concurrent requests. Are we checkign against a copy in memory?
+
+This is not actually terminating the connection, just the greenlet. If this is the right greenlet, make sure to close the socket.
+
+IOError: Heartbeats are not being received, or not keeping up. Terminating connection. SINCE_LAST=(59)s > CHECK_INTERVAL=(40)s SOCKET=[('127.0.0.1', 58453)]
+<Greenlet at 0x10cfc5b90: <bound method CommonMessageLoop.__watch_heartbeats of <rpipe.message_loop.CommonMessageLoop object at 0x10cf30d10>>(<Greenlet at 0x10cfc5e10>)> failed with IOError
+
+inject context information (such as request, invocation, and workflow into the handler scope)
+
+we need to be able to pass a specific name to use for a request, which will also preclude it from destruction. Create a script that can delete the request by name/uuid. This way, we can make graphs for requests without having to reconfigure the system and restarting.
+
+we need a way to be able to run jobs asynchronously, too. Just pass a parameter to the REST endpoint.
+
+we need to move the final artifacts out of Tahoe ASAP. It lives on the job workers, and we can't let it be used for anything but temporary storage. maybe push to S3 and store the action to the DB?
+
+we need to assert that there is data returned by combiners and reducers. log a warning if a mapper doesn't return anything. we shouldmake sure the dataset exists, even though it might be empty.
+
+
+We need to allow for a filesystem cleanup thread (just in case there's a problem, a handler exception, or assets that are pushed by a third-party and no longer required).
+
+
+
+we need a Memcache layer. VERY simple for a non-relational system: cache all reads, and push all writes prior to the write. Always perform the persistence write even if memcache fails (memcache service failure), and always read from persistence if the read fails (a cache miss).
+
+we should move the threading logic out of the queue implementation (and into the code that does the handling, in job_engine.py)
+
+we should allow the dispatch mechanism to be interchangeable, like gunicorn workers. We want to be able to choose to use greenlets instead of multithreading.
+<-- Our Gunicorn uses the gevent worker. otherwise, NSQ can't dispatch the message. conversely, our NSQ logic pushes the handler into a new thread and then returns. so, we might be fine. if we change this logic for gevent logic, we should be fine as well (this would allow the system to run more efficiently, if we became network-bounded for network-centric operation).
+
+
+we need to put timing records back in
+
+we need a UI
+
+
+add statsd events
+
+we need to leave a papertrail of what invocations have been created, assigned, and fulfilled. This will be cleaned-up, post-request, too.
+
+We'll probably have to handle potential duplicate messages, and we should use memcache for this.
+
+
+
+
+we might want to insist that all queued messages get persisted to disk.
+
+we should only emit a FIN for messages that were successfully processed.
+
+
+We're going to need someone to trigger MR jobs from Deploy UI. We can't start the obfuscation every time we finish a build.... Maybe we'll start it when we promote to release?
+
+JobX needs to not "finish" a queued message until its actually done. we need to survive failure and restarts.
+
+
